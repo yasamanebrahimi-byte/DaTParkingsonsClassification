@@ -92,6 +92,7 @@ class ModelConfig:
     base_channels: int = 16
     groups: int = 8
     layers: Sequence[int] = (2, 2, 2, 2)
+    dropout: float = 0.0
 
     @classmethod
     def from_mapping(cls, mapping: Mapping[str, Any] | None) -> "ModelConfig":

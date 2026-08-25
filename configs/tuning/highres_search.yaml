@@ -1,0 +1,41 @@
+# Priority 8: compact Search A over the existing high-resolution scanner-robust model.
+# Resolution/shape pairs are intentionally held fixed here; run a separate small
+# ablation after Search A if preprocessing caches are available.
+base_config: ../highres_scanner_aug.yaml
+base_experiment:
+  name: highres_scanner_aug
+  reason: "Highest-resolution existing CNN with the full scanner-robust augmentation preset"
+n_trials: 16
+seed: 20260824
+objective:
+  metric: log_loss
+  direction: minimize
+screening:
+  folds: 3
+  epochs: 25
+  patience: 6
+promotion:
+  top: 4
+  full_folds: artifacts/folds/folds.csv
+search_space:
+  learning_rate:
+    path: training.learning_rate
+    type: categorical
+    values: [0.0001, 0.0002, 0.0004]
+  weight_decay:
+    path: training.weight_decay
+    type: categorical
+    values: [0.0001, 0.001, 0.01]
+  base_channels:
+    path: model.base_channels
+    type: categorical
+    values: [16, 24, 32]
+  dropout:
+    path: model.dropout
+    type: categorical
+    values: [0.0, 0.1, 0.2]
+  augmentation_severity:
+    path: augmentation.severity
+    grouped_preset: true
+    type: categorical
+    values: [mild, moderate, strong]

@@ -12,6 +12,17 @@ def test_resnet_returns_raw_logit():
     assert output.dtype == torch.float32
 
 
+def test_dropout_zero_preserves_legacy_forward_behavior():
+    torch.manual_seed(17)
+    legacy = build_model("resnet3d", base_channels=2, groups=1)
+    configured = build_model("resnet3d", base_channels=2, groups=1, dropout=0.0)
+    configured.load_state_dict(legacy.state_dict())
+    legacy.eval()
+    configured.eval()
+    inputs = torch.randn(1, 1, 16, 16, 16)
+    assert torch.allclose(legacy(inputs), configured(inputs))
+
+
 def test_baseline_model_is_selected_by_name():
     model = build_model("resnet3d", base_channels=2, groups=1)
     assert isinstance(model, ResNet3D)

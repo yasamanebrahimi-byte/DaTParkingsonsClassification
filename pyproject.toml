@@ -41,6 +41,7 @@ dat-spect-benchmark-inference = "scripts.benchmark_inference:main"
 dat-spect-compare-calibration = "scripts.compare_calibration:main"
 dat-spect-calibration-diagnostics = "scripts.calibration_diagnostics:main"
 dat-spect-package = "scripts.package_submission:main"
+dat-spect-tune = "scripts.tune_model:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

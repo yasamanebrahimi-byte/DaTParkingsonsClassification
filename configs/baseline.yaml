@@ -29,6 +29,7 @@ training:
   patience: 10
   grad_clip_norm: 1.0
   amp: true
+  gradient_accumulation_steps: 1
   augment: true
   device: auto
 outputs:

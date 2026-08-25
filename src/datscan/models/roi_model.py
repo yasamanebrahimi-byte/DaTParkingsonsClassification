@@ -20,7 +20,7 @@ class ROIResNet3D(nn.Module):
 
     spatial_strides = (1, 1, 1, 2, 2, 2)
 
-    def __init__(self, layers: Sequence[int] = (2, 2, 2, 2), base_channels: int = 16, groups: int = 8) -> None:
+    def __init__(self, layers: Sequence[int] = (2, 2, 2, 2), base_channels: int = 16, groups: int = 8, dropout: float = 0.0) -> None:
         super().__init__()
         layers = tuple(int(count) for count in layers)
         if len(layers) != 4 or any(count < 1 for count in layers):
@@ -41,6 +41,9 @@ class ROIResNet3D(nn.Module):
             incoming = outgoing
         self.stages = nn.Sequential(*stages)
         self.pool = nn.AdaptiveAvgPool3d(1)
+        if not 0.0 <= float(dropout) < 1.0:
+            raise ValueError("dropout must be in [0, 1)")
+        self.dropout = nn.Dropout(float(dropout)) if float(dropout) > 0.0 else nn.Identity()
         self.classifier = nn.Linear(channels[-1], 1)
         self._initialize()
 
@@ -64,4 +67,4 @@ class ROIResNet3D(nn.Module):
         return shape
 
     def forward(self, x):
-        return self.classifier(self.pool(self.forward_features(x)).flatten(1)).squeeze(1)
+        return self.classifier(self.dropout(self.pool(self.forward_features(x)).flatten(1))).squeeze(1)

@@ -1,0 +1,26 @@
+# Optional Search B. Each categorical value is a physically paired spacing and
+# shape, so the tuner never compares unrelated fields of view by accident.
+base_config: ../highres_scanner_aug.yaml
+base_experiment:
+  name: highres_scanner_aug
+  reason: "Resolution ablation after Search A; use the selected Search A settings as the base"
+n_trials: 4
+seed: 20260824
+objective:
+  metric: log_loss
+  direction: minimize
+screening:
+  folds: 3
+  epochs: 25
+  patience: 6
+search_space:
+  resolution_pair:
+    type: categorical
+    overrides:
+      spacing: preprocessing.target_spacing_mm
+      shape: preprocessing.output_shape
+    values:
+      - {spacing: 3.0, shape: [96, 96, 96]}
+      - {spacing: 2.5, shape: [112, 112, 112]}
+      - {spacing: 2.5, shape: [128, 128, 128]}
+      - {spacing: 2.0, shape: [128, 128, 128]}

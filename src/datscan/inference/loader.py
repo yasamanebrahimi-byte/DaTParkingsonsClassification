@@ -17,7 +17,7 @@ def load_checkpoint(path: str | Path, device: torch.device) -> tuple[torch.nn.Mo
         raise ValueError(f"Invalid checkpoint payload: {path}")
     model_config = ModelConfig.from_mapping(payload.get("model"))
     preprocess_config = PreprocessConfig.from_mapping(payload.get("preprocess"))
-    model = build_model(model_config.name, model_config.base_channels, model_config.groups, model_config.layers)
+    model = build_model(model_config.name, model_config.base_channels, model_config.groups, model_config.layers, model_config.dropout)
     model.load_state_dict(payload["state_dict"], strict=True)
     model.to(device).eval()
     return model, preprocess_config, payload

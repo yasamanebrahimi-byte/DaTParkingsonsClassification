@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from dataclasses import asdict
 from pathlib import Path
 from typing import Dict, Tuple
@@ -19,6 +20,7 @@ from ..models.resnet3d import build_model
 from ..utils.config import ModelConfig, PreprocessConfig, ROIConfig
 from ..utils.metrics import binary_metrics
 from ..utils.reproducibility import derive_seed, seed_everything
+from .optimization import gradient_accumulation_optimizer_steps
 
 
 def _device(requested: str) -> torch.device:
@@ -47,6 +49,32 @@ def _seed_worker(_worker_id: int) -> None:
     worker_seed = torch.initial_seed() % (2**32)
     np.random.seed(worker_seed)
     random.seed(worker_seed)
+
+
+def _build_scheduler(optimizer, training_config: Dict, epochs: int):
+    scheduler_config = training_config.get("scheduler", "cosine")
+    if isinstance(scheduler_config, dict):
+        scheduler_name = str(scheduler_config.get("name", "cosine")).lower()
+        warmup_epochs = int(scheduler_config.get("warmup_epochs", training_config.get("warmup_epochs", 0)))
+    else:
+        scheduler_name = str(scheduler_config).lower()
+        warmup_epochs = int(training_config.get("warmup_epochs", 0))
+    if scheduler_name in {"none", "constant", "off"}:
+        return None
+    if scheduler_name not in {"cosine", "cosine_annealing", "cosine-with-warmup", "cosine_warmup"}:
+        raise ValueError(f"Unknown scheduler: {scheduler_name}")
+    if warmup_epochs <= 0:
+        return torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=max(int(epochs), 1))
+    warmup_epochs = min(warmup_epochs, max(int(epochs), 1))
+
+    def schedule(epoch: int) -> float:
+        if epoch < warmup_epochs:
+            return float(epoch + 1) / float(warmup_epochs)
+        remaining = max(int(epochs) - warmup_epochs, 1)
+        progress = min(max((epoch - warmup_epochs) / remaining, 0.0), 1.0)
+        return 0.5 * (1.0 + math.cos(math.pi * progress))
+
+    return torch.optim.lr_scheduler.LambdaLR(optimizer, schedule)
 
 
 def train_one_fold(
@@ -126,9 +154,11 @@ def train_one_fold(
         model_config.base_channels,
         model_config.groups,
         model_config.layers,
+        model_config.dropout,
     ).to(device)
     optimizer = torch.optim.AdamW(model.parameters(), lr=float(training_config.get("learning_rate", 2e-4)), weight_decay=float(training_config.get("weight_decay", 1e-3)))
-    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=max(int(training_config.get("epochs", 50)), 1))
+    epochs = max(int(training_config.get("epochs", 50)), 1)
+    scheduler = _build_scheduler(optimizer, training_config, epochs)
     criterion = nn.BCEWithLogitsLoss()
     use_amp = bool(training_config.get("amp", True)) and device.type == "cuda"
     scaler = _scaler(use_amp)
@@ -137,22 +167,36 @@ def train_one_fold(
     patience = int(training_config.get("patience", 10))
     stale = 0
     best_epoch = None
-    for epoch in range(int(training_config.get("epochs", 50))):
+    accumulation_steps = int(training_config.get("gradient_accumulation_steps", 1))
+    if accumulation_steps < 1:
+        raise ValueError("gradient_accumulation_steps must be at least 1")
+    optimizer_steps = 0
+    if device.type == "cuda":
+        torch.cuda.reset_peak_memory_stats(device)
+    for epoch in range(epochs):
         model.train()
-        for batch in train_loader:
+        optimizer.zero_grad(set_to_none=True)
+        batch_count = len(train_loader)
+        for batch_index, batch in enumerate(train_loader):
             images = batch["image"].to(device, non_blocking=True)
             targets = batch["target"].to(device, non_blocking=True)
-            optimizer.zero_grad(set_to_none=True)
             with _autocast(use_amp):
                 logits = model(images)
                 loss = criterion(logits, targets)
-            scaler.scale(loss).backward()
-            if training_config.get("grad_clip_norm"):
+            group_start = (batch_index // accumulation_steps) * accumulation_steps
+            group_size = min(accumulation_steps, batch_count - group_start)
+            scaler.scale(loss / float(group_size)).backward()
+            is_last_batch = batch_index == batch_count - 1
+            if (batch_index + 1) % accumulation_steps == 0 or is_last_batch:
                 scaler.unscale_(optimizer)
-                torch.nn.utils.clip_grad_norm_(model.parameters(), float(training_config["grad_clip_norm"]))
-            scaler.step(optimizer)
-            scaler.update()
-        scheduler.step()
+                if training_config.get("grad_clip_norm"):
+                    torch.nn.utils.clip_grad_norm_(model.parameters(), float(training_config["grad_clip_norm"]))
+                scaler.step(optimizer)
+                scaler.update()
+                optimizer.zero_grad(set_to_none=True)
+                optimizer_steps += 1
+        if scheduler is not None:
+            scheduler.step()
         validation = predict_loader(model, valid_loader, device, use_amp)
         validation_metrics = binary_metrics(validation["target"], validation["probability"])
         if validation_metrics["log_loss"] < best_loss:
@@ -197,6 +241,7 @@ def train_one_fold(
             "data_view": data_view,
             "roi": asdict(roi_config) if roi_config is not None else None,
             "augmentation": resolved_augmentation,
+            "training": dict(training_config),
         },
         checkpoint_path,
     )
@@ -209,6 +254,9 @@ def train_one_fold(
         **binary_metrics(out["target"], out["probability"]),
         "best_validation_log_loss": float(best_loss),
         "best_epoch": best_epoch,
+        "gradient_accumulation_steps": accumulation_steps,
+        "optimizer_steps": optimizer_steps,
+        "max_memory_allocated_mb": float(torch.cuda.max_memory_allocated(device) / (1024**2)) if device.type == "cuda" else None,
     }
 
 
