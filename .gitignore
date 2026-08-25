@@ -1,0 +1,75 @@
+# Python bytecode and caches
+__pycache__/
+*.py[cod]
+*$py.class
+.Python
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Packaging and build output
+build/
+dist/
+eggs/
+.eggs/
+*.egg-info/
+*.egg
+pip-wheel-metadata/
+*.whl
+
+# Test, coverage, and type-checker output
+.pytest_cache/
+.pytest_tmp/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+.tox/
+.nox/
+.mypy_cache/
+.pyright/
+.ruff_cache/
+
+# Local configuration and secrets
+.env
+.env.*
+!.env.example
+
+# IDE and editor files
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS-generated files
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Local/raw training data and extracted medical images
+training_data/*
+data/raw/
+data/extracted/
+data/processed/
+data/cache/
+*.nii
+*.nii.gz
+
+# Generated training outputs
+artifacts/checkpoints/
+artifacts/metrics/
+artifacts/calibration/
+artifacts/plots/
+artifacts/logs/
+submission.zip
+*.pt
+*.pth
+*.ckpt
+
+# Temporary local runtime files
+mock_runtime/
+*.log
+*.tmp

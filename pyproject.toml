@@ -1,0 +1,37 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "dat-spect-classifier"
+version = "0.1.0"
+description = "Reproducible DaT-SPECT binary probability classification pipeline"
+requires-python = ">=3.9"
+dependencies = [
+  "numpy>=1.23",
+  "pandas>=1.5",
+  "scipy>=1.9",
+  "scikit-learn>=1.1",
+  "nibabel>=4.0",
+  "PyYAML>=6.0",
+  "matplotlib>=3.6",
+  "torch>=2.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=7.0"]
+
+[project.scripts]
+dat-spect-inspect = "scripts.inspect_data:main"
+dat-spect-metadata = "scripts.build_metadata:main"
+dat-spect-folds = "scripts.create_folds:main"
+dat-spect-train = "scripts.train_cv:main"
+dat-spect-calibrate = "scripts.calibrate:main"
+dat-spect-package = "scripts.package_submission:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra --basetemp=.pytest_tmp"

@@ -1,0 +1,37 @@
+seed: 20260824
+data:
+  labels_path: training_data/train_labels_JNDlMjr.csv
+  archive_path: training_data/niftis_utCGpHE.zip
+  extracted_dir: data/extracted
+  metadata_path: artifacts/metadata/train_metadata.csv
+preprocessing:
+  version: "1"
+  target_spacing_mm: 3.0
+  output_shape: [96, 96, 96]
+  foreground_quantile: 0.01
+  foreground_threshold_fraction: 0.05
+  intensity_percentile: 99.5
+  clip_max: 2.0
+  eps: 1.0e-6
+  pad_value: 0.0
+model:
+  name: resnet3d
+  base_channels: 16
+  groups: 8
+training:
+  folds: 5
+  epochs: 50
+  batch_size: 2
+  num_workers: 0
+  learning_rate: 0.0002
+  weight_decay: 0.001
+  patience: 10
+  grad_clip_norm: 1.0
+  amp: true
+  augment: true
+  device: auto
+outputs:
+  folds_path: artifacts/folds/folds.csv
+  oof_path: artifacts/metrics/resnet18_oof.csv
+  checkpoint_dir: artifacts/checkpoints
+

@@ -1,0 +1,5 @@
+model:
+  name: resnet3d
+  base_channels: 16
+  groups: 8
+

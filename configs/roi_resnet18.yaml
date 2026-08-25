@@ -1,0 +1,4 @@
+preprocessing:
+  target_spacing_mm: 2.5
+  output_shape: [112, 112, 112]
+
