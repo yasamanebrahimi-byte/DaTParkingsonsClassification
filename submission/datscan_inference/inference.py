@@ -13,6 +13,7 @@ import yaml
 from scipy.special import expit, logit
 
 from .feature_support import PreprocessConfig as FeaturePreprocessConfig, ROIConfig as FeatureROIConfig
+from .calibration import apply_calibration, combine_logits
 from .models import load_model_details
 from .preprocessing import Config, ROIConfig, preprocess_views
 try:
@@ -41,9 +42,24 @@ def _load_family(paths, device):
 
 
 def _temperature_probability(probability: float, temperature: float) -> float:
-    if temperature <= 0 or not np.isfinite(temperature):
-        raise ValueError("Calibration temperature must be finite and positive")
-    return float(expit(logit(np.clip(probability, 1e-6, 1.0 - 1e-6)) / temperature))
+    """Legacy public helper retained for old package behavior and tests."""
+
+    return float(
+        apply_calibration(
+            probability,
+            {"method": "temperature_scaling", "temperature": temperature, "input_type": "probability"},
+        )
+    )
+
+
+def _calibrate_ensemble_input(logit_value: float, probability_value: float, calibration: dict) -> float:
+    """Use the artifact's declared input type, defaulting legacy JSON to p."""
+
+    payload = dict(calibration or {})
+    input_type = str(payload.get("input_type", "probability")).lower()
+    input_type = {"mean_logit": "logit", "mean_logits": "logit", "mean_probability": "probability", "mean_probabilities": "probability"}.get(input_type, input_type)
+    value = logit_value if input_type == "logit" else probability_value
+    return float(np.asarray(apply_calibration(value, payload)).reshape(-1)[0])
 
 
 def _load_feature_family(assets: Path):
@@ -107,6 +123,9 @@ def run_inference(root: Path) -> None:
 
     manifest_path = assets / "ensemble.json"
     manifest = json.loads(manifest_path.read_text(encoding="utf-8")) if manifest_path.exists() else None
+    fold_ensemble_method = str((manifest or {}).get("ensemble_method", "logit_mean"))
+    global_fold_weights = (manifest or {}).get("global_fold_weights", (manifest or {}).get("fold_weights"))
+    roi_fold_weights = (manifest or {}).get("roi_fold_weights", (manifest or {}).get("fold_weights"))
     if roi_models:
         if manifest is None:
             raise FileNotFoundError("Global + ROI package is missing assets/ensemble.json")
@@ -128,6 +147,15 @@ def run_inference(root: Path) -> None:
 
     calibration_path = assets / "calibration.json"
     calibration = json.loads(calibration_path.read_text(encoding="utf-8")) if calibration_path.exists() else {"temperature": 1.0, "enabled": False}
+    # New calibration artifacts carry the fold-combination contract.  This is
+    # the source of truth for global-only packages without an ensemble.json;
+    # old packages retain the historical logit-mean default.
+    if manifest is None or "ensemble_method" not in manifest:
+        fold_ensemble_method = str(calibration.get("ensemble_method", fold_ensemble_method))
+        if global_fold_weights is None:
+            global_fold_weights = calibration.get("global_fold_weights", calibration.get("fold_weights"))
+        if roi_fold_weights is None:
+            roi_fold_weights = calibration.get("roi_fold_weights", calibration.get("fold_weights"))
     temperature = float(calibration.get("temperature", 1.0))
     calibration_enabled = bool(calibration.get("enabled", True))
     after_ensemble = bool(manifest and manifest.get("calibration_stage") == "after_ensemble") or calibration.get("stage") == "after_ensemble"
@@ -166,31 +194,38 @@ def run_inference(root: Path) -> None:
             view_roi_config = feature_roi_config if feature_models else (roi_config if roi_models else None)
             views = preprocess_views(path, preprocess_config, view_roi_config)
             global_tensor = torch.from_numpy(views["global"]).unsqueeze(0).to(device)
-            global_logits = torch.stack([model(global_tensor).float().squeeze(0).cpu() for model in global_models])
+            global_logits = torch.stack([model(global_tensor).float().squeeze(0).cpu() for model in global_models]).numpy()
+            global_ensemble_value, global_ensemble_type = combine_logits(global_logits, fold_ensemble_method, global_fold_weights)
+            global_probability = float(expit(global_ensemble_value)) if global_ensemble_type == "logit" else float(global_ensemble_value)
+            global_logit = float(global_ensemble_value) if global_ensemble_type == "logit" else float(logit(np.clip(global_probability, 1e-6, 1.0 - 1e-6)))
             if roi_models:
                 roi_tensor = torch.from_numpy(views["roi"]).unsqueeze(0).to(device)
-                roi_logits = torch.stack([model(roi_tensor).float().squeeze(0).cpu() for model in roi_models])
-                global_probability = float(expit(global_logits.mean().item()))
-                roi_probability = float(expit(roi_logits.mean().item()))
+                roi_logits = torch.stack([model(roi_tensor).float().squeeze(0).cpu() for model in roi_models]).numpy()
+                roi_ensemble_value, roi_ensemble_type = combine_logits(roi_logits, fold_ensemble_method, roi_fold_weights)
+                roi_probability = float(expit(roi_ensemble_value)) if roi_ensemble_type == "logit" else float(roi_ensemble_value)
+                roi_logit = float(roi_ensemble_value) if roi_ensemble_type == "logit" else float(logit(np.clip(roi_probability, 1e-6, 1.0 - 1e-6)))
                 cnn_probability = global_weight * global_probability + roi_weight * roi_probability
+                cnn_logit = float(logit(np.clip(cnn_probability, 1e-6, 1.0 - 1e-6)))
             else:
-                cnn_probability = float(expit(global_logits.mean().item()))
+                cnn_probability = global_probability
+                cnn_logit = global_logit
             if feature_models:
                 feature_probability = _feature_probability(feature_models, feature_columns, feature_config, views["roi"], feature_preprocess_config.target_spacing_mm)
                 if calibration_enabled and not after_ensemble:
-                    cnn_probability = _temperature_probability(cnn_probability, temperature)
+                    cnn_probability = _calibrate_ensemble_input(cnn_logit, cnn_probability, calibration)
+                    cnn_logit = float(logit(np.clip(cnn_probability, 1e-6, 1.0 - 1e-6)))
                 if feature_method == "logit":
                     probability = float(expit(cnn_weight * logit(np.clip(cnn_probability, 1e-6, 1.0 - 1e-6)) + feature_weight * logit(np.clip(feature_probability, 1e-6, 1.0 - 1e-6))))
                 else:
                     probability = cnn_weight * cnn_probability + feature_weight * feature_probability
                 if calibration_enabled and after_ensemble:
-                    probability = _temperature_probability(probability, temperature)
+                    probability = _calibrate_ensemble_input(float(logit(np.clip(probability, 1e-6, 1.0 - 1e-6))), probability, calibration)
             elif roi_models:
                 probability = cnn_probability
                 if calibration_enabled and after_ensemble:
-                    probability = _temperature_probability(probability, temperature)
+                    probability = _calibrate_ensemble_input(cnn_logit, probability, calibration)
             else:
-                probability = _temperature_probability(cnn_probability, temperature) if calibration_enabled else cnn_probability
+                probability = _calibrate_ensemble_input(cnn_logit, cnn_probability, calibration) if calibration_enabled else cnn_probability
             probabilities.append(float(np.clip(probability, 1e-6, 1.0 - 1e-6)))
             if n and (index + 1) in {max(1, n // 4), max(1, n // 2), max(1, 3 * n // 4)}:
                 print(f"{round((index + 1) * 100 / n)}% complete")

@@ -10,6 +10,118 @@ from scipy.stats import spearmanr
 from ..utils.metrics import binary_metrics, safe_probabilities
 
 
+ENSEMBLE_METHODS = {
+    "logit_mean",
+    "mean_logits",
+    "probability_mean",
+    "mean_probabilities",
+    "weighted_probability_mean",
+    "weighted_probabilities",
+}
+
+
+def _member_matrix(values: np.ndarray, name: str) -> np.ndarray:
+    matrix = np.asarray(values, dtype=float)
+    if matrix.ndim != 2 or matrix.shape[0] == 0 or matrix.shape[1] == 0:
+        raise ValueError(f"{name} must be a non-empty [n_members, n_samples] matrix")
+    if not np.isfinite(matrix).all():
+        raise ValueError(f"{name} contains non-finite values")
+    return matrix
+
+
+def normalize_weights(weights: np.ndarray | list[float], n_members: int) -> np.ndarray:
+    values = np.asarray(weights, dtype=float)
+    if values.shape != (n_members,) or not np.isfinite(values).all() or np.any(values < 0) or values.sum() <= 0:
+        raise ValueError("Ensemble weights must be finite, non-negative, and match the number of members")
+    return values / values.sum()
+
+
+def mean_logits(logits: np.ndarray) -> np.ndarray:
+    """Mean raw model logits, then leave sigmoid application to the caller."""
+
+    return _member_matrix(logits, "logits").mean(axis=0)
+
+
+def mean_probabilities(logits: np.ndarray, weights: np.ndarray | list[float] | None = None) -> np.ndarray:
+    """Mean individual sigmoid probabilities, never sigmoid(mean logits)."""
+
+    matrix = _member_matrix(logits, "logits")
+    probabilities = expit(matrix)
+    normalized = np.ones(matrix.shape[0], dtype=float) / matrix.shape[0] if weights is None else normalize_weights(weights, matrix.shape[0])
+    return safe_probabilities((probabilities * normalized[:, None]).sum(axis=0))
+
+
+def weighted_probability_mean(probabilities: np.ndarray, weights: np.ndarray | list[float]) -> np.ndarray:
+    """Weighted probability mean using only weights learned from aligned OOF rows."""
+
+    matrix = _member_matrix(probabilities, "probabilities")
+    if np.any((matrix < 0) | (matrix > 1)):
+        raise ValueError("Probability ensemble members must be in [0, 1]")
+    normalized = normalize_weights(weights, matrix.shape[0])
+    return safe_probabilities((matrix * normalized[:, None]).sum(axis=0))
+
+
+def combine_logits(
+    logits: np.ndarray,
+    method: str = "logit_mean",
+    weights: np.ndarray | list[float] | None = None,
+) -> np.ndarray:
+    """Return the pre-calibration ensemble input in the requested strategy."""
+
+    normalized_method = str(method).lower()
+    if normalized_method in {"logit_mean", "mean_logits"}:
+        return mean_logits(logits)
+    if normalized_method in {"probability_mean", "mean_probabilities"}:
+        return mean_probabilities(logits, weights=weights)
+    if normalized_method in {"weighted_probability_mean", "weighted_probabilities"}:
+        if weights is None:
+            raise ValueError("weighted probability mean requires weights")
+        return weighted_probability_mean(expit(_member_matrix(logits, "logits")), weights)
+    raise ValueError(f"Unknown ensemble method: {method}")
+
+
+def ensemble_probabilities(
+    logits: np.ndarray,
+    method: str = "logit_mean",
+    weights: np.ndarray | list[float] | None = None,
+) -> np.ndarray:
+    """Combine model logits exactly as competition inference should."""
+
+    normalized_method = str(method).lower()
+    if normalized_method in {"logit_mean", "mean_logits"}:
+        return safe_probabilities(expit(mean_logits(logits)))
+    return combine_logits(logits, normalized_method, weights=weights)
+
+
+def validate_member_oof_matrix(
+    targets: np.ndarray,
+    prediction_matrix: np.ndarray,
+    *,
+    member_training_masks: np.ndarray | None = None,
+) -> None:
+    """Guard against learning fold weights from invalid ordinary OOF data.
+
+    A standard K-fold OOF matrix has one prediction per row, not one prediction
+    from every fold model.  Callers must supply a genuinely out-of-sample
+    training mask for every member before using ``optimize_weights`` on a
+    matrix of model predictions.
+    """
+
+    matrix = _member_matrix(prediction_matrix, "prediction_matrix")
+    if matrix.shape[1] != len(np.asarray(targets)):
+        raise ValueError("prediction_matrix must have one column per target row")
+    if member_training_masks is None:
+        raise ValueError(
+            "Cannot learn per-fold weights from ordinary one-prediction-per-UID OOF data; "
+            "provide repeated or otherwise genuinely out-of-sample member predictions"
+        )
+    masks = np.asarray(member_training_masks, dtype=bool)
+    if masks.shape != matrix.shape:
+        raise ValueError("member_training_masks must match prediction_matrix shape")
+    if masks.any():
+        raise ValueError("member_training_masks marks a training-leaked prediction")
+
+
 def optimize_weights(targets: np.ndarray, prediction_matrix: np.ndarray) -> np.ndarray:
     targets = np.asarray(targets, dtype=float)
     matrix = np.asarray(prediction_matrix, dtype=float)

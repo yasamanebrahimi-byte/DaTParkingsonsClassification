@@ -61,6 +61,7 @@ def train_one_fold(
     checkpoint_prefix: str | None = None,
     augmentation_config: dict | None = None,
     seed: int | None = None,
+    repeat: int | None = None,
 ) -> Tuple[pd.DataFrame, Dict]:
     device = _device(str(training_config.get("device", "auto")))
     train_frame = frame[frame["fold"] != fold].reset_index(drop=True)
@@ -157,6 +158,8 @@ def train_one_fold(
     out = valid_frame[["uid", "fold", "label"]].copy().rename(columns={"label": "target"})
     out["logit"] = predictions["logit"]
     out["probability"] = predictions["probability"]
+    if repeat is not None:
+        out["repeat"] = int(repeat)
     if checkpoint_prefix is None:
         checkpoint_prefix = "roi_resnet3d" if data_view == "roi" else "resnet3d"
     checkpoint_path = Path(checkpoint_dir) / f"{checkpoint_prefix}_fold{fold}.pt"
@@ -166,6 +169,7 @@ def train_one_fold(
             "checkpoint_version": 2,
             "state_dict": best_state,
             "fold": fold,
+            "repeat": int(repeat) if repeat is not None else None,
             "preprocess": asdict(preprocess_config),
             "model": asdict(model_config),
             "data_view": data_view,

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import warnings
 from pathlib import Path
 from typing import Any
@@ -38,6 +39,88 @@ def create_folds(metadata: pd.DataFrame, n_splits: int = 5, seed: int = 20260824
     if (result["fold"] < 0).any():
         raise RuntimeError("Standard fold generation left one or more UIDs unassigned")
     return result.sort_values("uid").reset_index(drop=True)
+
+
+def repeated_fold_seeds(seed: int = 20260824, n_repeats: int = 3) -> list[int]:
+    """Return deterministic, distinct seeds for repeated IID CV."""
+
+    if n_repeats < 1:
+        raise ValueError("n_repeats must be at least 1")
+    return [int(seed) + repeat for repeat in range(int(n_repeats))]
+
+
+def create_repeated_folds(
+    metadata: pd.DataFrame,
+    n_splits: int = 5,
+    n_repeats: int = 3,
+    seed: int = 20260824,
+) -> dict[int, pd.DataFrame]:
+    """Create repeat-specific stratified folds without touching canonical folds.
+
+    Each returned table assigns every UID exactly one validation fold for that
+    repeat.  The repeat seed is stored in ``DataFrame.attrs`` and is also
+    written by :func:`save_repeated_folds`.
+    """
+
+    repeats = {}
+    for repeat, repeat_seed in enumerate(repeated_fold_seeds(seed, n_repeats)):
+        frame = create_folds(metadata, n_splits=n_splits, seed=repeat_seed)
+        frame.attrs["repeat"] = int(repeat)
+        frame.attrs["seed"] = int(repeat_seed)
+        frame.attrs["n_splits"] = int(n_splits)
+        repeats[repeat] = frame
+    return repeats
+
+
+def save_repeated_folds(
+    repeats: dict[int, pd.DataFrame],
+    output_dir: str | Path,
+    *,
+    base_seed: int | None = None,
+) -> None:
+    """Save repeat tables as ``repeat_<n>.csv`` and a reproducibility manifest."""
+
+    destination = Path(output_dir)
+    destination.mkdir(parents=True, exist_ok=True)
+    manifest = []
+    for repeat, frame in sorted(repeats.items()):
+        if "uid" not in frame or "fold" not in frame:
+            raise ValueError("Repeated fold tables require uid and fold columns")
+        if frame["uid"].duplicated().any():
+            raise ValueError("Repeated fold tables cannot contain duplicate UIDs")
+        path = destination / f"repeat_{int(repeat)}.csv"
+        frame.to_csv(path, index=False)
+        manifest.append(
+            {
+                "repeat": int(repeat),
+                "seed": int(frame.attrs.get("seed", int(base_seed or 0) + int(repeat))),
+                "n_splits": int(frame["fold"].nunique()),
+                "path": path.name,
+                "rows": int(len(frame)),
+            }
+        )
+    (destination / "manifest.json").write_text(json.dumps({"version": 1, "repeats": manifest}, indent=2), encoding="utf-8")
+
+
+def load_repeated_folds(output_dir: str | Path) -> dict[int, pd.DataFrame]:
+    destination = Path(output_dir)
+    manifest_path = destination / "manifest.json"
+    if manifest_path.exists():
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        paths = [(int(row["repeat"]), destination / row["path"]) for row in manifest.get("repeats", [])]
+    else:
+        paths = [(int(path.stem.split("_")[-1]), path) for path in sorted(destination.glob("repeat_*.csv"))]
+    if not paths:
+        raise FileNotFoundError(f"No repeat_*.csv files found under {destination}")
+    repeats = {}
+    for repeat, path in paths:
+        frame = pd.read_csv(path)
+        if "uid" not in frame or "fold" not in frame:
+            raise ValueError(f"Repeated fold file is missing uid/fold columns: {path}")
+        if frame["uid"].duplicated().any():
+            raise ValueError(f"Repeated fold file contains duplicate UIDs: {path}")
+        repeats[repeat] = frame
+    return repeats
 
 
 def _domain_assignments_frame(metadata: pd.DataFrame, assignments: Any) -> pd.DataFrame:

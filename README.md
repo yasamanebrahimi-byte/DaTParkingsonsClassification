@@ -213,6 +213,71 @@ python scripts/calibrate.py `
 Calibration is applied after the probability ensemble only when its OOF log
 loss is lower than the uncalibrated ensemble.
 
+### Priority 6: ensemble-like repeated OOF calibration
+
+The historical control remains unchanged: canonical OOF contains one
+held-out-model prediction per UID, while submission inference averages fold
+logits and then applies the legacy temperature. The controlled experiment
+below creates three independent 5-fold OOF predictions per UID and keeps the
+canonical `artifacts/folds/folds.csv` untouched. Repeat seeds are
+`20260824`, `20260825`, and `20260826` when the default seed is used.
+
+```powershell
+python scripts/create_repeated_folds.py `
+  --metadata artifacts/metadata/train_metadata.csv `
+  --output-dir artifacts/folds/repeated `
+  --n-splits 5 `
+  --n-repeats 3 `
+  --seed 20260824
+
+python scripts/train_repeated_cv.py `
+  --config configs/highres_scanner_aug.yaml `
+  --metadata artifacts/metadata/train_metadata.csv `
+  --fold-dir artifacts/folds/repeated `
+  --output-dir artifacts/repeated_cv/highres_scanner_aug
+
+python scripts/aggregate_repeated_oof.py `
+  --oof artifacts/repeated_cv/highres_scanner_aug/repeated_oof.csv `
+  --output artifacts/metrics/highres_scanner_aug_repeated_oof_summary.csv `
+  --n-repeats 3
+
+python scripts/compare_calibration.py `
+  --oof artifacts/metrics/highres_scanner_aug_repeated_oof_summary.csv `
+  --output artifacts/metrics/highres_scanner_aug_calibration_comparison.csv `
+  --plots-dir artifacts/plots/calibration/highres_scanner_aug
+```
+
+Use cross-fitted calibration scores for selection. Fit the final production
+artifact only after selecting the representation and method from that table;
+the following example uses probability-space Platt scaling on repeated mean
+probabilities:
+
+```powershell
+python scripts/calibrate.py `
+  --oof artifacts/metrics/highres_scanner_aug_repeated_oof_summary.csv `
+  --probability-column mean_probability `
+  --method platt `
+  --input-type probability `
+  --ensemble-method probability_mean `
+  --stage after_ensemble `
+  --cross-fit `
+  --output artifacts/calibration/highres_scanner_aug_repeated_platt.json
+
+python scripts/package_submission.py `
+  --checkpoint-dir artifacts/checkpoints_highres_scanner_aug `
+  --calibration artifacts/calibration/highres_scanner_aug_repeated_platt.json `
+  --output submission_highres_scanner_aug_repeated_platt.zip
+```
+
+The repeated raw artifact is long format (`uid`, `target`, `repeat`, `fold`,
+`logit`, `probability`); the derived summary retains `mean_logit`,
+`prob_from_mean_logit`, `mean_probability`, and prediction uncertainty. Fold
+weights are not learned from ordinary one-prediction-per-UID OOF files.
+`ensemble_method` in a saved calibration artifact controls whether inference
+uses mean logits, mean probabilities, or explicitly supplied weighted
+probabilities. Legacy JSON containing only `temperature` continues to mean
+average logits, divide by temperature, then sigmoid.
+
 ## Packaging and local submission simulation
 
 After training, create a root-correct `submission.zip`:

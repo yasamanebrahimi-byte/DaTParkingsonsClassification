@@ -14,7 +14,12 @@ from sklearn.metrics import (
 
 
 def safe_probabilities(probabilities: Iterable[float], epsilon: float = 1e-6) -> np.ndarray:
-    values = np.asarray(list(probabilities), dtype=np.float64)
+    if np.isscalar(probabilities):
+        values = np.asarray(probabilities, dtype=np.float64)
+    elif isinstance(probabilities, np.ndarray):
+        values = np.asarray(probabilities, dtype=np.float64)
+    else:
+        values = np.asarray(list(probabilities), dtype=np.float64)
     if not np.isfinite(values).all():
         raise ValueError("Probabilities contain non-finite values")
     return np.clip(values, epsilon, 1.0 - epsilon)
@@ -46,4 +51,3 @@ def binary_metrics(targets: Iterable[float], probabilities: Iterable[float]) -> 
     }
     result["auroc"] = float(roc_auc_score(y, p)) if np.unique(y).size == 2 else float("nan")
     return result
-
