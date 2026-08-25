@@ -1,8 +1,9 @@
 import numpy as np
 import nibabel as nib
+from pathlib import Path
 
 from datscan.data.preprocessing import crop_or_pad_center, normalize_intensity, preprocess_nifti
-from datscan.utils.config import PreprocessConfig
+from datscan.utils.config import PreprocessConfig, load_yaml
 
 
 def test_normalization_is_per_scan_and_finite():
@@ -31,3 +32,14 @@ def test_full_preprocessing_has_fixed_shape(tmp_path):
     assert result.shape == (1, 16, 16, 16)
     assert result.dtype == np.float32
 
+
+def test_highres_config_produces_112_cube(tmp_path):
+    root = Path(__file__).resolve().parents[1]
+    config = PreprocessConfig.from_mapping(load_yaml(root / "configs/highres_resnet.yaml")["preprocessing"])
+    data = np.zeros((12, 12, 12), dtype=np.float32)
+    data[4:8, 4:8, 4:8] = 5.0
+    path = tmp_path / "highres.nii.gz"
+    nib.save(nib.Nifti1Image(data, np.eye(4)), path)
+    result = preprocess_nifti(path, config)
+    assert result.shape == (1, 112, 112, 112)
+    assert result.dtype == np.float32

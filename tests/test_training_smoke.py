@@ -1,6 +1,7 @@
 import numpy as np
 import nibabel as nib
 import pandas as pd
+import torch
 
 from datscan.training.train import train_one_fold
 from datscan.utils.config import ModelConfig, PreprocessConfig
@@ -25,3 +26,7 @@ def test_one_fold_training_smoke(tmp_path):
     assert len(predictions) == 2
     assert np.isfinite(predictions["logit"]).all()
     assert "log_loss" in metrics
+    payload = torch.load(tmp_path / "checkpoints" / "resnet3d_fold0.pt", map_location="cpu", weights_only=False)
+    assert payload["checkpoint_version"] == 2
+    assert payload["model"]["name"] == "resnet3d"
+    assert tuple(payload["preprocess"]["output_shape"]) == (16, 16, 16)

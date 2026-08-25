@@ -16,6 +16,21 @@ The engineering baseline is implemented and wired for the supplied training arch
 - `artifacts`: generated metadata, folds, checkpoints, reports, and OOF predictions.
 - `tests`: synthetic NIfTI and submission-contract tests.
 
+## High-resolution ResNet experiment
+
+`configs/highres_resnet.yaml` adds a controlled `resnet3d_highres` experiment while leaving the baseline configuration unchanged. Both variants use the same GroupNorm residual blocks and training loop; the high-resolution model changes only the input resolution and early downsampling strategy.
+
+| Property | Current baseline | High-resolution model |
+| --- | --- | --- |
+| Input spacing | 3.0 mm | 2.5 mm |
+| Input shape | 96³ | 112³ |
+| Stem stride | 2 | 1 |
+| Initial max pool | Yes, stride 2 | No |
+| Total downsampling | 32× | 8× |
+| Final feature map | 3³ | 14³ |
+
+The `feature_map_shape()` model diagnostic and tests verify these dimensions without printing tensor contents.
+
 ## Environment setup
 
 Use Python 3.12 in the competition environment. A CPU environment is sufficient for tests and metadata validation; a CUDA PyTorch build is recommended for training.

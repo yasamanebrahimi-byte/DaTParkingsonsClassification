@@ -67,9 +67,11 @@ class ModelConfig:
     name: str = "resnet3d"
     base_channels: int = 16
     groups: int = 8
+    layers: Sequence[int] = (2, 2, 2, 2)
 
     @classmethod
     def from_mapping(cls, mapping: Mapping[str, Any] | None) -> "ModelConfig":
         values = dict(mapping or {})
+        if "layers" in values:
+            values["layers"] = tuple(int(x) for x in values["layers"])
         return cls(**{key: values[key] for key in values if key in cls.__dataclass_fields__})
-

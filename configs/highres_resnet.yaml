@@ -1,0 +1,38 @@
+seed: 20260824
+data:
+  labels_path: training_data/train_labels_JNDlMjr.csv
+  archive_path: training_data/niftis_utCGpHE.zip
+  extracted_dir: data/extracted
+  metadata_path: artifacts/metadata/train_metadata.csv
+preprocessing:
+  cache_dir: data/cache
+  version: "highres-1"
+  target_spacing_mm: 2.5
+  output_shape: [112, 112, 112]
+  foreground_quantile: 0.01
+  foreground_threshold_fraction: 0.05
+  intensity_percentile: 99.5
+  clip_max: 2.0
+  eps: 1.0e-6
+  pad_value: 0.0
+model:
+  name: resnet3d_highres
+  base_channels: 16
+  groups: 8
+  layers: [2, 2, 2, 2]
+training:
+  folds: 5
+  epochs: 50
+  batch_size: 1
+  num_workers: 2
+  learning_rate: 0.0002
+  weight_decay: 0.001
+  patience: 10
+  grad_clip_norm: 1.0
+  amp: true
+  augment: true
+  device: auto
+outputs:
+  folds_path: artifacts/folds/folds.csv
+  oof_path: artifacts/metrics/highres_resnet_oof.csv
+  checkpoint_dir: artifacts/checkpoints_highres

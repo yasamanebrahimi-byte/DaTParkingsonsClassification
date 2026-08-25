@@ -21,6 +21,13 @@ class Config:
     eps: float = 1e-6
     pad_value: float = 0.0
 
+    @classmethod
+    def from_mapping(cls, mapping: dict | None) -> "Config":
+        values = dict(mapping or {})
+        if "output_shape" in values:
+            values["output_shape"] = tuple(int(size) for size in values["output_shape"])
+        return cls(**{key: values[key] for key in values if key in cls.__dataclass_fields__})
+
 
 def _crop_or_pad(volume: np.ndarray, output_shape: Tuple[int, int, int], center: Tuple[float, float, float], pad_value: float) -> np.ndarray:
     output = np.full(output_shape, pad_value, dtype=np.float32)
@@ -59,4 +66,3 @@ def preprocess(path: str | Path, config: Config) -> np.ndarray:
         volume = np.zeros_like(volume, dtype=np.float32)
         center = tuple((np.asarray(volume.shape) - 1) / 2)
     return _crop_or_pad(volume, config.output_shape, center, config.pad_value)[None, ...]
-

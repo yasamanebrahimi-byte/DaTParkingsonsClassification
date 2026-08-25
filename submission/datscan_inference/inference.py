@@ -32,8 +32,11 @@ def run_inference(root: Path) -> None:
     for path in checkpoint_paths:
         model, raw_config = load_model(path, device)
         models.append(model)
+        current_config = Config.from_mapping(raw_config)
         if preprocess_config is None:
-            preprocess_config = Config(**{key: value for key, value in raw_config.items() if key in Config.__dataclass_fields__})
+            preprocess_config = current_config
+        elif current_config != preprocess_config:
+            raise ValueError("Packaged checkpoints use different preprocessing configurations")
     calibration_path = assets / "calibration.json"
     temperature = 1.0
     if calibration_path.exists():

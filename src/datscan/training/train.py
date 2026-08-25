@@ -1,7 +1,8 @@
-"""Cross-validation training loop for the baseline 3D model."""
+"""Cross-validation training loop shared by all configured 3D models."""
 
 from __future__ import annotations
 
+from dataclasses import asdict
 from pathlib import Path
 from typing import Dict, Tuple
 
@@ -56,7 +57,12 @@ def train_one_fold(
     loader_args = {"batch_size": int(training_config.get("batch_size", 2)), "num_workers": int(training_config.get("num_workers", 0)), "pin_memory": device.type == "cuda"}
     train_loader = DataLoader(train_dataset, shuffle=True, drop_last=False, **loader_args)
     valid_loader = DataLoader(valid_dataset, shuffle=False, drop_last=False, **loader_args)
-    model = build_model(model_config.name, model_config.base_channels, model_config.groups).to(device)
+    model = build_model(
+        model_config.name,
+        model_config.base_channels,
+        model_config.groups,
+        model_config.layers,
+    ).to(device)
     optimizer = torch.optim.AdamW(model.parameters(), lr=float(training_config.get("learning_rate", 2e-4)), weight_decay=float(training_config.get("weight_decay", 1e-3)))
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=max(int(training_config.get("epochs", 50)), 1))
     criterion = nn.BCEWithLogitsLoss()
@@ -103,7 +109,16 @@ def train_one_fold(
     out["probability"] = predictions["probability"]
     checkpoint_path = Path(checkpoint_dir) / f"resnet3d_fold{fold}.pt"
     checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
-    torch.save({"state_dict": best_state, "fold": fold, "preprocess": preprocess_config.__dict__, "model": model_config.__dict__}, checkpoint_path)
+    torch.save(
+        {
+            "checkpoint_version": 2,
+            "state_dict": best_state,
+            "fold": fold,
+            "preprocess": asdict(preprocess_config),
+            "model": asdict(model_config),
+        },
+        checkpoint_path,
+    )
     return out, {
         "fold": fold,
         **binary_metrics(out["target"], out["probability"]),

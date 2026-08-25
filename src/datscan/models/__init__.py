@@ -1,6 +1,5 @@
 """Model definitions."""
 
-from .resnet3d import ResNet3D, build_model
+from .resnet3d import HighResolutionResNet3D, ResNet3D, ResNet3DHighRes, build_model
 
-__all__ = ["ResNet3D", "build_model"]
-
+__all__ = ["HighResolutionResNet3D", "ResNet3D", "ResNet3DHighRes", "build_model"]
