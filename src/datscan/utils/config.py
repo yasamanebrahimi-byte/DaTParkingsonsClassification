@@ -63,6 +63,30 @@ class PreprocessConfig:
 
 
 @dataclass(frozen=True)
+class ROIConfig:
+    """Configuration for the deterministic bilateral striatal view.
+
+    The crop is expressed in voxels after isotropic resampling.  With the
+    default 2.5 mm spacing, ``(64, 64, 48)`` therefore covers
+    ``160 x 160 x 120 mm``.  ``center_max_shift_fraction`` limits how far the
+    foreground-geometry center can move from the resampled volume center;
+    this prevents a unilateral hot striatum from pulling the crop away from
+    the contralateral side.
+    """
+
+    enabled: bool = False
+    roi_shape: Sequence[int] = (64, 64, 48)
+    center_max_shift_fraction: float = 0.25
+
+    @classmethod
+    def from_mapping(cls, mapping: Mapping[str, Any] | None) -> "ROIConfig":
+        values = dict(mapping or {})
+        if "roi_shape" in values:
+            values["roi_shape"] = tuple(int(x) for x in values["roi_shape"])
+        return cls(**{key: values[key] for key in values if key in cls.__dataclass_fields__})
+
+
+@dataclass(frozen=True)
 class ModelConfig:
     name: str = "resnet3d"
     base_channels: int = 16

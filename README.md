@@ -31,6 +31,33 @@ The engineering baseline is implemented and wired for the supplied training arch
 
 The `feature_map_shape()` model diagnostic and tests verify these dimensions without printing tensor contents.
 
+## Striatum-focused ROI experiment
+
+`configs/roi_resnet.yaml` adds an independent `roi_resnet3d` experiment. It
+uses the same canonical orientation, 2.5 mm isotropic resampling, intensity
+normalization, folds, and mild augmentation as the high-resolution global
+experiment, but the model receives only a deterministic bilateral ROI view.
+
+| Property | Global high-resolution | Striatal ROI |
+| --- | --- | --- |
+| Input shape | 112 x 112 x 112 | 64 x 64 x 48 |
+| Physical FOV | 280 x 280 x 280 mm | 160 x 160 x 120 mm |
+| Stem stride | 1 | 1 |
+| Initial max pool | No | No |
+| Total downsampling | 8x | 8x |
+| Final feature map | 14 x 14 x 14 | 8 x 8 x 6 |
+
+After canonical RAS orientation, spatial axis 0 is the left/right axis. The
+ROI center is computed from low-threshold foreground support geometry after
+resampling, then bounded around the resampled volume center. This keeps both
+hemispheres in the crop and prevents a unilateral high-uptake side from
+pulling the crop away from the weaker side. It never uses the brightest voxel,
+annotations, or test-set information.
+
+Run `scripts/inspect_roi.py` for a compact coverage report. Supplying
+`--visualize-dir` additionally saves whole-volume and ROI orthogonal middle
+slices for explicitly selected local UIDs.
+
 ## Environment setup
 
 Use Python 3.12 in the competition environment. A CPU environment is sufficient for tests and metadata validation; a CUDA PyTorch build is recommended for training.
@@ -102,6 +129,32 @@ python scripts/calibrate.py `
 
 Calibration is applied to logits before the final numerical epsilon clamp. No public leaderboard score is used to fit calibration or ensemble weights.
 
+For the global + ROI experiment, first build the OOF grid-search manifest.
+The command writes both the JSON manifest and a companion ensemble OOF CSV;
+the selected weight is based only on the concatenated OOF rows.
+
+```powershell
+python scripts/build_ensemble.py `
+  --global-oof artifacts/metrics/highres_resnet_oof.csv `
+  --roi-oof artifacts/metrics/roi_resnet_oof.csv `
+  --output artifacts/ensemble/global_roi.json
+```
+
+The manifest reports global-only, ROI-only, 50/50, and optimized probability
+ensembles, AUROC, Brier score, OOF log loss, correlations, classification
+disagreement, and disagreement losses. Calibrate the final ensemble after
+this step:
+
+```powershell
+python scripts/calibrate.py `
+  --oof artifacts/ensemble/global_roi_oof.csv `
+  --probability-column ensemble_probability `
+  --output artifacts/calibration/global_roi_temperature.json
+```
+
+Calibration is applied after the probability ensemble only when its OOF log
+loss is lower than the uncalibrated ensemble.
+
 ## Packaging and local submission simulation
 
 After training, create a root-correct `submission.zip`:
@@ -112,6 +165,26 @@ python scripts/package_submission.py `
   --calibration artifacts/calibration/temperature.json `
   --output submission.zip
 ```
+
+For the global + ROI package, use the two checkpoint families and the
+OOF-derived manifest:
+
+```powershell
+python scripts/package_submission.py `
+  --global-checkpoint-dir artifacts/checkpoints_highres `
+  --roi-checkpoint-dir artifacts/checkpoints_roi `
+  --ensemble artifacts/ensemble/global_roi.json `
+  --calibration artifacts/calibration/global_roi_temperature.json `
+  --global-config configs/highres_resnet.yaml `
+  --roi-config configs/roi_resnet.yaml `
+  --output submission_global_roi.zip
+```
+
+At inference, each NIfTI is loaded and resampled once, both views are derived
+from that normalized base volume, fold logits are averaged within each model
+family, OOF-derived weights are applied to probabilities, and the saved
+post-ensemble calibration is applied. No network access or test-data weight
+re-estimation is required.
 
 The package contains `main.py` at its archive root, `datscan_inference/`, and `assets/`. `main.py` reads `/code_execution/data/submission_format.csv`, finds each UID under `/code_execution/data/niftis/`, preserves template ordering, and writes `/code_execution/submission.csv`.
 
@@ -127,4 +200,7 @@ A competition-like simulation can be run after a package and test data are avail
 
 Seeds are set for Python, NumPy, PyTorch, CUDA, and fold generation. Preprocessing is configuration-driven and is duplicated in the submission only as a minimal dependency-free copy; synthetic tests cover orientation, physical resampling, normalization, crop/pad, model output, and submission validation. Corrupt images and missing assets raise explicit errors rather than silently emitting 0.5.
 
-Registration, ROI networks, quantitative feature models, TTA, and learned ensemble weights remain extension points. They should be adopted only after controlled OOF log-loss evidence and domain-robustness diagnostics justify them.
+Registration, quantitative feature models, TTA, and other priorities remain
+out of scope. The ROI model and learned global/ROI weight are controlled
+experiments and should be retained only when OOF log-loss and stability
+evidence justify them.

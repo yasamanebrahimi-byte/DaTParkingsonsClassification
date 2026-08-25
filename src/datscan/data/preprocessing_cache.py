@@ -12,7 +12,7 @@ from typing import Callable
 
 import numpy as np
 
-from ..utils.config import PreprocessConfig
+from ..utils.config import PreprocessConfig, ROIConfig
 from .preprocessing import preprocessing_fingerprint
 
 logger = logging.getLogger(__name__)
@@ -21,10 +21,23 @@ logger = logging.getLogger(__name__)
 class PreprocessingCache:
     """Lazily cache deterministic preprocessed volumes as validated ``.npy`` files."""
 
-    def __init__(self, cache_dir: str | Path, config: PreprocessConfig) -> None:
+    def __init__(
+        self,
+        cache_dir: str | Path,
+        config: PreprocessConfig,
+        data_view: str = "global",
+        roi_config: ROIConfig | None = None,
+    ) -> None:
         self.cache_dir = Path(cache_dir)
         self.config = config
-        self._expected_shape = (1, *(int(size) for size in config.output_shape))
+        self.data_view = data_view
+        self.roi_config = roi_config
+        if data_view not in {"global", "roi"}:
+            raise ValueError(f"Unknown data_view: {data_view}")
+        if data_view == "roi" and (roi_config is None or not roi_config.enabled):
+            raise ValueError("ROI cache entries require roi.enabled=true")
+        shape = roi_config.roi_shape if data_view == "roi" and roi_config is not None else config.output_shape
+        self._expected_shape = (1, *(int(size) for size in shape))
         self.hits = 0
         self.misses = 0
         self.cache_dir.mkdir(parents=True, exist_ok=True)
@@ -39,7 +52,7 @@ class PreprocessingCache:
             "uid": str(uid),
             "source_size": int(stat.st_size),
             "source_mtime_ns": int(stat.st_mtime_ns),
-            "preprocessing": preprocessing_fingerprint(self.config),
+            "preprocessing": preprocessing_fingerprint(self.config, self.data_view, self.roi_config),
         }
         encoded = json.dumps(identity, sort_keys=True, separators=(",", ":")).encode("utf-8")
         digest = hashlib.sha256(encoded).hexdigest()

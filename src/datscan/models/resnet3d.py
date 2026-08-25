@@ -135,6 +135,10 @@ def build_model(
     groups: int = 8,
     layers: Sequence[int] = (2, 2, 2, 2),
 ) -> nn.Module:
+    if name.lower() in {"roi_resnet3d", "roi-resnet3d", "roi_resnet18", "roi_resnet"}:
+        from .roi_model import ROIResNet3D
+
+        return ROIResNet3D(layers=layers, base_channels=base_channels, groups=groups)
     if name.lower() in {"resnet3d", "resnet18", "resnet18_3d"}:
         return ResNet3D(layers=layers, base_channels=base_channels, groups=groups)
     if name.lower() in {"resnet3d_highres", "resnet3d-highres", "highres_resnet3d"}:

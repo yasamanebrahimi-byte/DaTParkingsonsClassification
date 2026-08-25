@@ -16,7 +16,7 @@ from torch.utils.data import DataLoader
 from ..data.dataset import DaTSPECTDataset
 from ..data.transforms import MildVolumeAugmentation
 from ..models.resnet3d import build_model
-from ..utils.config import ModelConfig, PreprocessConfig
+from ..utils.config import ModelConfig, PreprocessConfig, ROIConfig
 from ..utils.metrics import binary_metrics
 
 
@@ -47,13 +47,29 @@ def train_one_fold(
     training_config: Dict,
     checkpoint_dir: str | Path,
     cache_dir: str | Path | None = None,
+    data_view: str = "global",
+    roi_config: ROIConfig | None = None,
+    checkpoint_prefix: str | None = None,
 ) -> Tuple[pd.DataFrame, Dict]:
     device = _device(str(training_config.get("device", "auto")))
     train_frame = frame[frame["fold"] != fold].reset_index(drop=True)
     valid_frame = frame[frame["fold"] == fold].reset_index(drop=True)
     augmentation = MildVolumeAugmentation() if training_config.get("augment", True) else None
-    train_dataset = DaTSPECTDataset(train_frame, preprocess_config, augment=augmentation, cache_dir=cache_dir)
-    valid_dataset = DaTSPECTDataset(valid_frame, preprocess_config, cache_dir=cache_dir)
+    train_dataset = DaTSPECTDataset(
+        train_frame,
+        preprocess_config,
+        augment=augmentation,
+        cache_dir=cache_dir,
+        data_view=data_view,
+        roi_config=roi_config,
+    )
+    valid_dataset = DaTSPECTDataset(
+        valid_frame,
+        preprocess_config,
+        cache_dir=cache_dir,
+        data_view=data_view,
+        roi_config=roi_config,
+    )
     loader_args = {"batch_size": int(training_config.get("batch_size", 2)), "num_workers": int(training_config.get("num_workers", 0)), "pin_memory": device.type == "cuda"}
     train_loader = DataLoader(train_dataset, shuffle=True, drop_last=False, **loader_args)
     valid_loader = DataLoader(valid_dataset, shuffle=False, drop_last=False, **loader_args)
@@ -107,7 +123,9 @@ def train_one_fold(
     out = valid_frame[["uid", "fold", "label"]].copy().rename(columns={"label": "target"})
     out["logit"] = predictions["logit"]
     out["probability"] = predictions["probability"]
-    checkpoint_path = Path(checkpoint_dir) / f"resnet3d_fold{fold}.pt"
+    if checkpoint_prefix is None:
+        checkpoint_prefix = "roi_resnet3d" if data_view == "roi" else "resnet3d"
+    checkpoint_path = Path(checkpoint_dir) / f"{checkpoint_prefix}_fold{fold}.pt"
     checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
     torch.save(
         {
@@ -116,6 +134,8 @@ def train_one_fold(
             "fold": fold,
             "preprocess": asdict(preprocess_config),
             "model": asdict(model_config),
+            "data_view": data_view,
+            "roi": asdict(roi_config) if roi_config is not None else None,
         },
         checkpoint_path,
     )

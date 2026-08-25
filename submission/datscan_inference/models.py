@@ -69,16 +69,41 @@ class HighResolutionResNet3D(ResNet3D):
         self.classifier = nn.Linear(channels[-1], 1)
 
 
+class ROIResNet3D(nn.Module):
+    """Checkpoint-compatible compact ROI model with 8x total downsampling."""
+
+    def __init__(self, base_channels=16, groups=8, layers=(2, 2, 2, 2)) -> None:
+        super().__init__()
+        layers = tuple(int(count) for count in layers)
+        channels = [base_channels, base_channels * 2, base_channels * 4, base_channels * 8]
+        self.stem = nn.Sequential(nn.Conv3d(1, channels[0], 3, 1, 1, bias=False), nn.GroupNorm(_groups(channels[0], groups), channels[0]), nn.ReLU(inplace=True))
+        stages = []
+        incoming = channels[0]
+        for stage, outgoing in enumerate(channels):
+            blocks = [Block(incoming, outgoing, 1 if stage == 0 else 2, groups)]
+            blocks.extend(Block(outgoing, outgoing, 1, groups) for _ in range(layers[stage] - 1))
+            stages.append(nn.Sequential(*blocks))
+            incoming = outgoing
+        self.stages = nn.Sequential(*stages)
+        self.pool = nn.AdaptiveAvgPool3d(1)
+        self.classifier = nn.Linear(channels[-1], 1)
+
+    def forward(self, x):
+        return self.classifier(self.pool(self.stages(self.stem(x))).flatten(1)).squeeze(1)
+
+
 def build_model(name="resnet3d", base_channels=16, groups=8, layers=(2, 2, 2, 2)):
     normalized = str(name).lower()
     if normalized in {"resnet3d", "resnet18", "resnet18_3d"}:
         return ResNet3D(base_channels, groups, layers)
     if normalized in {"resnet3d_highres", "resnet3d-highres", "highres_resnet3d"}:
         return HighResolutionResNet3D(base_channels, groups, layers)
+    if normalized in {"roi_resnet3d", "roi-resnet3d", "roi_resnet18", "roi_resnet"}:
+        return ROIResNet3D(base_channels, groups, layers)
     raise ValueError(f"Unknown model: {name}")
 
 
-def load_model(path, device):
+def load_model_details(path, device):
     payload = torch.load(path, map_location="cpu", weights_only=False)
     model_config = payload.get("model", {}) or {}
     model = build_model(
@@ -88,4 +113,9 @@ def load_model(path, device):
         model_config.get("layers", (2, 2, 2, 2)),
     )
     model.load_state_dict(payload["state_dict"], strict=True)
-    return model.to(device).eval(), payload.get("preprocess", {})
+    return model.to(device).eval(), payload.get("preprocess", {}), payload
+
+
+def load_model(path, device):
+    model, raw_preprocess, _ = load_model_details(path, device)
+    return model, raw_preprocess

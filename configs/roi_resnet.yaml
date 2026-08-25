@@ -1,5 +1,10 @@
 seed: 20260824
 data_view: roi
+data:
+  labels_path: training_data/train_labels_JNDlMjr.csv
+  archive_path: training_data/niftis_utCGpHE.zip
+  extracted_dir: data/extracted
+  metadata_path: artifacts/metadata/train_metadata.csv
 preprocessing:
   cache_dir: data/cache
   version: "roi-1"

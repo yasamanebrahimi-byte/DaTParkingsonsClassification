@@ -15,11 +15,18 @@ from ..utils.metrics import safe_probabilities
 from ..models.resnet3d import build_model
 
 
-def predict_paths(model: torch.nn.Module, paths: Sequence[str | Path], preprocess_config, device: torch.device) -> np.ndarray:
+def predict_paths(
+    model: torch.nn.Module,
+    paths: Sequence[str | Path],
+    preprocess_config,
+    device: torch.device,
+    data_view: str = "global",
+    roi_config=None,
+) -> np.ndarray:
     values = []
     with torch.inference_mode():
         for path in paths:
-            tensor = torch.from_numpy(preprocess_nifti(str(path), preprocess_config)).unsqueeze(0).to(device)
+            tensor = torch.from_numpy(preprocess_nifti(str(path), preprocess_config, data_view, roi_config)).unsqueeze(0).to(device)
             values.append(float(model(tensor).detach().cpu().item()))
     return expit(np.asarray(values, dtype=float))
 
@@ -34,4 +41,3 @@ def validate_submission(submission: pd.DataFrame, template: pd.DataFrame) -> Non
     probabilities = submission["is_pathologic"].to_numpy(dtype=float)
     if not np.isfinite(probabilities).all() or not np.all((probabilities >= 0.0) & (probabilities <= 1.0)):
         raise ValueError("Submission probabilities must be finite and in [0, 1]")
-

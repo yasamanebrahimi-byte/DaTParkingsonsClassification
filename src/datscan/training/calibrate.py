@@ -32,13 +32,17 @@ def apply_temperature(logits: np.ndarray, temperature: float, epsilon: float = 1
     return np.clip(expit(np.asarray(logits, dtype=float) / temperature), epsilon, 1.0 - epsilon)
 
 
-def save_calibration(temperature: float, path: str | Path) -> None:
+def save_calibration(temperature: float, path: str | Path, stage: str = "before_ensemble", enabled: bool = True, raw_log_loss: float | None = None, calibrated_log_loss: float | None = None) -> None:
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps({"method": "temperature_scaling", "temperature": temperature}, indent=2), encoding="utf-8")
+    payload = {"method": "temperature_scaling", "temperature": temperature, "stage": stage, "enabled": bool(enabled)}
+    if raw_log_loss is not None:
+        payload["raw_log_loss"] = float(raw_log_loss)
+    if calibrated_log_loss is not None:
+        payload["calibrated_log_loss"] = float(calibrated_log_loss)
+    path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
 
 
 def load_calibration(path: str | Path) -> float:
     payload = json.loads(Path(path).read_text(encoding="utf-8"))
     return float(payload["temperature"])
-
