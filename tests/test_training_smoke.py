@@ -20,8 +20,21 @@ def test_one_fold_training_smoke(tmp_path):
         fold=0,
         preprocess_config=PreprocessConfig(output_shape=(16, 16, 16), target_spacing_mm=1.0),
         model_config=ModelConfig(base_channels=2, groups=1),
-        training_config={"epochs": 1, "batch_size": 2, "num_workers": 0, "device": "cpu", "amp": False, "augment": False, "patience": 1},
+        training_config={"epochs": 1, "batch_size": 2, "num_workers": 0, "device": "cpu", "amp": False, "augment": True, "patience": 1},
         checkpoint_dir=tmp_path / "checkpoints",
+        augmentation_config={
+            "name": "scanner_robust",
+            "severity": "moderate",
+            "flip_probability": 0.0,
+            "intensity_scale": {"probability": 0.0},
+            "gamma": {"probability": 0.0},
+            "gaussian_noise": {"probability": 1.0, "std_min": 0.01, "std_max": 0.01},
+            "gaussian_blur": {"probability": 0.0},
+            "resolution_degradation": {"probability": 0.0},
+            "poisson_noise": {"probability": 0.0},
+            "affine": {"probability": 0.0},
+        },
+        seed=20260824,
     )
     assert len(predictions) == 2
     assert np.isfinite(predictions["logit"]).all()
@@ -30,3 +43,4 @@ def test_one_fold_training_smoke(tmp_path):
     assert payload["checkpoint_version"] == 2
     assert payload["model"]["name"] == "resnet3d"
     assert tuple(payload["preprocess"]["output_shape"]) == (16, 16, 16)
+    assert payload["augmentation"]["name"] == "scanner_robust"

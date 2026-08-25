@@ -46,6 +46,8 @@ def main(argv=None) -> int:
             cache_dir=cache_dir,
             data_view=data_view,
             roi_config=roi_config,
+            augmentation_config=config.get("augmentation"),
+            seed=int(config.get("seed", 20260824)),
         )
         all_predictions.append(predictions)
         fold_metrics.append(metrics)

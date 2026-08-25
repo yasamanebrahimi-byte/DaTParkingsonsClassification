@@ -1,0 +1,74 @@
+seed: 20260824
+data:
+  labels_path: training_data/train_labels_JNDlMjr.csv
+  archive_path: training_data/niftis_utCGpHE.zip
+  extracted_dir: data/extracted
+  metadata_path: artifacts/metadata/train_metadata.csv
+preprocessing:
+  cache_dir: data/cache
+  version: "highres-1"
+  target_spacing_mm: 2.5
+  output_shape: [112, 112, 112]
+  foreground_quantile: 0.01
+  foreground_threshold_fraction: 0.05
+  intensity_percentile: 99.5
+  clip_max: 2.0
+  eps: 1.0e-6
+  pad_value: 0.0
+model:
+  name: resnet3d_highres
+  base_channels: 16
+  groups: 8
+  layers: [2, 2, 2, 2]
+augmentation:
+  name: scanner_robust
+  severity: moderate
+  flip_probability: 0.5
+  intensity_scale:
+    probability: 0.7
+    min: 0.85
+    max: 1.15
+  gamma:
+    probability: 0.5
+    min: 0.85
+    max: 1.15
+  gaussian_noise:
+    probability: 0.5
+    std_min: 0.005
+    std_max: 0.04
+  gaussian_blur:
+    probability: 0.5
+    sigma_min: 0.25
+    sigma_max: 1.25
+  resolution_degradation:
+    probability: 0.4
+    scale_min: 0.65
+    scale_max: 1.0
+  poisson_noise:
+    probability: 0.3
+    count_scale_min: 50
+    count_scale_max: 500
+  additive_offset:
+    probability: 0.0
+    min: -0.002
+    max: 0.002
+  affine:
+    probability: 0.4
+    max_rotation_degrees: 5
+    max_translation_voxels: 4
+training:
+  folds: 5
+  epochs: 50
+  batch_size: 1
+  num_workers: 2
+  learning_rate: 0.0002
+  weight_decay: 0.001
+  patience: 10
+  grad_clip_norm: 1.0
+  amp: true
+  augment: true
+  device: auto
+outputs:
+  folds_path: artifacts/folds/folds.csv
+  oof_path: artifacts/metrics/highres_scanner_aug_oof.csv
+  checkpoint_dir: artifacts/checkpoints_highres_scanner_aug

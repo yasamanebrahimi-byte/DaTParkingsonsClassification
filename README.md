@@ -31,6 +31,24 @@ The engineering baseline is implemented and wired for the supplied training arch
 
 The `feature_map_shape()` model diagnostic and tests verify these dimensions without printing tensor contents.
 
+## Scanner-robust augmentation experiment
+
+The historical `MildVolumeAugmentation` remains the default for the baseline,
+high-resolution, and ROI experiments. Training configs can now select
+`augmentation.name: none`, `mild`, or `scanner_robust` without Python changes.
+The scanner-robust transform is applied only after deterministic preprocessing
+and cache retrieval; validation, OOF prediction, calibration, and packaged
+inference remain deterministic.
+
+The first controlled experiment is `configs/highres_scanner_aug.yaml`. It keeps
+the high-resolution architecture, preprocessing, optimizer, folds, seed, and
+training schedule fixed while adding moderate blur, resolution, noise,
+intensity, and conservative affine perturbations. The companion configs
+`highres_blur_noise.yaml` and `highres_blur_noise_resolution.yaml` provide
+ablation points without code edits. `scripts/inspect_augmentations.py` saves
+orthogonal slice montages and quantitative sanity statistics for explicitly
+selected training UIDs.
+
 ## Striatum-focused ROI experiment
 
 `configs/roi_resnet.yaml` adds an independent `roi_resnet3d` experiment. It
@@ -115,6 +133,38 @@ python scripts/train_cv.py `
   --checkpoint-dir artifacts/checkpoints
 ```
 
+Train the scanner-robust high-resolution experiment with the same saved folds:
+
+```powershell
+python scripts/train_cv.py `
+  --config configs/highres_scanner_aug.yaml `
+  --metadata artifacts/metadata/train_metadata.csv `
+  --folds artifacts/folds/folds.csv `
+  --oof artifacts/metrics/highres_scanner_aug_oof.csv `
+  --checkpoint-dir artifacts/checkpoints_highres_scanner_aug
+```
+
+The matched high-resolution mild-augmentation control is:
+
+```powershell
+python scripts/train_cv.py `
+  --config configs/highres_resnet.yaml `
+  --metadata artifacts/metadata/train_metadata.csv `
+  --folds artifacts/folds/folds.csv `
+  --oof artifacts/metrics/highres_resnet_oof.csv `
+  --checkpoint-dir artifacts/checkpoints_highres
+```
+
+Compare the control and scanner-robust OOF predictions, including fold
+stability and per-sample high-confidence errors:
+
+```powershell
+python scripts/compare_augmentation_oof.py `
+  --mild-oof artifacts/metrics/highres_resnet_oof.csv `
+  --scanner-oof artifacts/metrics/highres_scanner_aug_oof.csv `
+  --output artifacts/metrics/highres_mild_vs_scanner_aug_errors.csv
+```
+
 OOF rows contain `uid`, `fold`, `target`, `logit`, and `probability`. Model selection must use overall OOF log loss; AUROC, Brier score, sensitivity, specificity, and calibration diagnostics are secondary diagnostics.
 
 ## Calibration
@@ -128,6 +178,14 @@ python scripts/calibrate.py `
 ```
 
 Calibration is applied to logits before the final numerical epsilon clamp. No public leaderboard score is used to fit calibration or ensemble weights.
+
+Calibrate the scanner-robust OOF logits with the existing OOF-only procedure:
+
+```powershell
+python scripts/calibrate.py `
+  --oof artifacts/metrics/highres_scanner_aug_oof.csv `
+  --output artifacts/calibration/highres_scanner_aug_temperature.json
+```
 
 For the global + ROI experiment, first build the OOF grid-search manifest.
 The command writes both the JSON manifest and a companion ensemble OOF CSV;
@@ -164,6 +222,17 @@ python scripts/package_submission.py `
   --checkpoint-dir artifacts/checkpoints `
   --calibration artifacts/calibration/temperature.json `
   --output submission.zip
+```
+
+Package the scanner-robust global checkpoints using the normal deterministic
+inference package:
+
+```powershell
+python scripts/package_submission.py `
+  --checkpoint-dir artifacts/checkpoints_highres_scanner_aug `
+  --calibration artifacts/calibration/highres_scanner_aug_temperature.json `
+  --global-config configs/highres_scanner_aug.yaml `
+  --output submission_highres_scanner_aug.zip
 ```
 
 For the global + ROI package, use the two checkpoint families and the

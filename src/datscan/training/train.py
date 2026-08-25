@@ -14,7 +14,7 @@ from torch.cuda.amp import GradScaler, autocast
 from torch.utils.data import DataLoader
 
 from ..data.dataset import DaTSPECTDataset
-from ..data.transforms import MildVolumeAugmentation
+from ..data.transforms import build_augmentation, resolve_augmentation_config
 from ..models.resnet3d import build_model
 from ..utils.config import ModelConfig, PreprocessConfig, ROIConfig
 from ..utils.metrics import binary_metrics
@@ -39,6 +39,15 @@ def _autocast(enabled: bool):
     return autocast(enabled=enabled, dtype=torch.bfloat16 if enabled else torch.float32)
 
 
+def _seed_worker(_worker_id: int) -> None:
+    """Seed Python and NumPy from the DataLoader worker's torch seed."""
+    import random
+
+    worker_seed = torch.initial_seed() % (2**32)
+    np.random.seed(worker_seed)
+    random.seed(worker_seed)
+
+
 def train_one_fold(
     frame: pd.DataFrame,
     fold: int,
@@ -50,11 +59,17 @@ def train_one_fold(
     data_view: str = "global",
     roi_config: ROIConfig | None = None,
     checkpoint_prefix: str | None = None,
+    augmentation_config: dict | None = None,
+    seed: int | None = None,
 ) -> Tuple[pd.DataFrame, Dict]:
     device = _device(str(training_config.get("device", "auto")))
     train_frame = frame[frame["fold"] != fold].reset_index(drop=True)
     valid_frame = frame[frame["fold"] == fold].reset_index(drop=True)
-    augmentation = MildVolumeAugmentation() if training_config.get("augment", True) else None
+    if augmentation_config is None and "augmentation" in training_config:
+        augmentation_config = training_config.get("augmentation")
+    legacy_augment = bool(training_config.get("augment", True))
+    augmentation = build_augmentation(augmentation_config, legacy_augment=legacy_augment)
+    resolved_augmentation = resolve_augmentation_config(augmentation_config, legacy_augment=legacy_augment)
     train_dataset = DaTSPECTDataset(
         train_frame,
         preprocess_config,
@@ -71,8 +86,27 @@ def train_one_fold(
         roi_config=roi_config,
     )
     loader_args = {"batch_size": int(training_config.get("batch_size", 2)), "num_workers": int(training_config.get("num_workers", 0)), "pin_memory": device.type == "cuda"}
-    train_loader = DataLoader(train_dataset, shuffle=True, drop_last=False, **loader_args)
-    valid_loader = DataLoader(valid_dataset, shuffle=False, drop_last=False, **loader_args)
+    train_generator = None
+    worker_init_fn = None
+    if seed is not None:
+        train_generator = torch.Generator()
+        train_generator.manual_seed(int(seed) + int(fold) * 1009)
+        worker_init_fn = _seed_worker
+    train_loader = DataLoader(
+        train_dataset,
+        shuffle=True,
+        drop_last=False,
+        generator=train_generator,
+        worker_init_fn=worker_init_fn,
+        **loader_args,
+    )
+    valid_loader = DataLoader(
+        valid_dataset,
+        shuffle=False,
+        drop_last=False,
+        worker_init_fn=worker_init_fn,
+        **loader_args,
+    )
     model = build_model(
         model_config.name,
         model_config.base_channels,
@@ -136,6 +170,7 @@ def train_one_fold(
             "model": asdict(model_config),
             "data_view": data_view,
             "roi": asdict(roi_config) if roi_config is not None else None,
+            "augmentation": resolved_augmentation,
         },
         checkpoint_path,
     )
