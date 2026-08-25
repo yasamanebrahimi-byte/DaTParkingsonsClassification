@@ -5,6 +5,7 @@
 
 ## Label balance
 
+label
 0.0    615
 1.0    747
 
