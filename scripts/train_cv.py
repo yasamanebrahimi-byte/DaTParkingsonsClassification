@@ -32,6 +32,7 @@ def main(argv=None) -> int:
     model = ModelConfig.from_mapping(config.get("model"))
     cache_dir = config.get("preprocessing", {}).get("cache_dir")
     all_predictions = []
+    fold_metrics = []
     for fold in sorted(metadata["fold"].unique()):
         predictions, metrics = train_one_fold(
             metadata,
@@ -43,10 +44,26 @@ def main(argv=None) -> int:
             cache_dir=cache_dir,
         )
         all_predictions.append(predictions)
+        fold_metrics.append(metrics)
         print(metrics)
     oof = pd.concat(all_predictions, ignore_index=True).sort_values("uid")
     Path(args.oof).parent.mkdir(parents=True, exist_ok=True)
     oof.to_csv(args.oof, index=False)
+    best = min(fold_metrics, key=lambda metrics: metrics["best_validation_log_loss"])
+    training = config.get("training", {})
+    print(
+        "Best validation log loss: "
+        f"{best['best_validation_log_loss']:.6f} "
+        f"(fold={best['fold']}, epoch={best['best_epoch']})"
+    )
+    print(
+        "Parameters: "
+        f"model={model.name}, base_channels={model.base_channels}, groups={model.groups}, "
+        f"learning_rate={training.get('learning_rate', 2e-4)}, "
+        f"weight_decay={training.get('weight_decay', 1e-3)}, "
+        f"batch_size={training.get('batch_size', 2)}, "
+        f"patience={training.get('patience', 10)}"
+    )
     print(f"Wrote OOF predictions to {args.oof}")
     return 0
 

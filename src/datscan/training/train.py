@@ -66,7 +66,8 @@ def train_one_fold(
     best_state = None
     patience = int(training_config.get("patience", 10))
     stale = 0
-    for _epoch in range(int(training_config.get("epochs", 50))):
+    best_epoch = None
+    for epoch in range(int(training_config.get("epochs", 50))):
         model.train()
         for batch in train_loader:
             images = batch["image"].to(device, non_blocking=True)
@@ -86,6 +87,7 @@ def train_one_fold(
         validation_metrics = binary_metrics(validation["target"], validation["probability"])
         if validation_metrics["log_loss"] < best_loss:
             best_loss = validation_metrics["log_loss"]
+            best_epoch = epoch + 1
             stale = 0
             best_state = {key: value.detach().cpu().clone() for key, value in model.state_dict().items()}
         else:
@@ -102,7 +104,12 @@ def train_one_fold(
     checkpoint_path = Path(checkpoint_dir) / f"resnet3d_fold{fold}.pt"
     checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
     torch.save({"state_dict": best_state, "fold": fold, "preprocess": preprocess_config.__dict__, "model": model_config.__dict__}, checkpoint_path)
-    return out, {"fold": fold, **binary_metrics(out["target"], out["probability"])}
+    return out, {
+        "fold": fold,
+        **binary_metrics(out["target"], out["probability"]),
+        "best_validation_log_loss": float(best_loss),
+        "best_epoch": best_epoch,
+    }
 
 
 def predict_loader(model: nn.Module, loader: DataLoader, device: torch.device, use_amp: bool = False) -> Dict[str, np.ndarray]:
