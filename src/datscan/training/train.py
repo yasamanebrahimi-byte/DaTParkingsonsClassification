@@ -38,13 +38,21 @@ def _autocast(enabled: bool):
     return autocast(enabled=enabled, dtype=torch.bfloat16 if enabled else torch.float32)
 
 
-def train_one_fold(frame: pd.DataFrame, fold: int, preprocess_config: PreprocessConfig, model_config: ModelConfig, training_config: Dict, checkpoint_dir: str | Path) -> Tuple[pd.DataFrame, Dict]:
+def train_one_fold(
+    frame: pd.DataFrame,
+    fold: int,
+    preprocess_config: PreprocessConfig,
+    model_config: ModelConfig,
+    training_config: Dict,
+    checkpoint_dir: str | Path,
+    cache_dir: str | Path | None = None,
+) -> Tuple[pd.DataFrame, Dict]:
     device = _device(str(training_config.get("device", "auto")))
     train_frame = frame[frame["fold"] != fold].reset_index(drop=True)
     valid_frame = frame[frame["fold"] == fold].reset_index(drop=True)
     augmentation = MildVolumeAugmentation() if training_config.get("augment", True) else None
-    train_dataset = DaTSPECTDataset(train_frame, preprocess_config, augment=augmentation)
-    valid_dataset = DaTSPECTDataset(valid_frame, preprocess_config)
+    train_dataset = DaTSPECTDataset(train_frame, preprocess_config, augment=augmentation, cache_dir=cache_dir)
+    valid_dataset = DaTSPECTDataset(valid_frame, preprocess_config, cache_dir=cache_dir)
     loader_args = {"batch_size": int(training_config.get("batch_size", 2)), "num_workers": int(training_config.get("num_workers", 0)), "pin_memory": device.type == "cuda"}
     train_loader = DataLoader(train_dataset, shuffle=True, drop_last=False, **loader_args)
     valid_loader = DataLoader(valid_dataset, shuffle=False, drop_last=False, **loader_args)
