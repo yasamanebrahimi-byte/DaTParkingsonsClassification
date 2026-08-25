@@ -11,6 +11,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 import pandas as pd
 
 from datscan.training.train import train_one_fold
+from datscan.training.folds import validate_domain_folds
 from datscan.utils.config import ModelConfig, PreprocessConfig, ROIConfig, load_config
 from datscan.utils.logging import configure_logging
 from datscan.utils.reproducibility import seed_everything
@@ -27,7 +28,25 @@ def main(argv=None) -> int:
     configure_logging()
     config = load_config(args.config, "configs/baseline.yaml" if Path(args.config).name != "baseline.yaml" else None)
     seed_everything(int(config.get("seed", 20260824)))
-    metadata = pd.read_csv(args.metadata).merge(pd.read_csv(args.folds)[["uid", "fold"]], on="uid", how="inner", validate="one_to_one")
+    metadata_frame = pd.read_csv(args.metadata)
+    fold_frame = pd.read_csv(args.folds)
+    if "domain_group" in fold_frame.columns:
+        validate_domain_folds(fold_frame)
+        source_labels = metadata_frame[["uid", "label"]].copy()
+        checked_labels = source_labels.merge(
+            fold_frame[["uid", "label"]], on="uid", how="inner", suffixes=("_metadata", "_fold"), validate="one_to_one"
+        )
+        if not (checked_labels["label_metadata"].astype(float) == checked_labels["label_fold"].astype(float)).all():
+            raise ValueError("Domain fold labels do not match the metadata labels")
+        strategy = "stratified_group (domain-aware)"
+        fold_columns = ["uid", "fold", "domain_group"]
+    else:
+        strategy = "stratified (canonical IID)"
+        fold_columns = ["uid", "fold"]
+    metadata = metadata_frame.merge(fold_frame[fold_columns], on="uid", how="inner", validate="one_to_one")
+    if len(metadata) != len(metadata_frame):
+        raise ValueError("Fold file must contain exactly one assignment for every metadata UID")
+    print(f"Fold strategy: {strategy}")
     preprocess = PreprocessConfig.from_mapping(config.get("preprocessing"))
     model = ModelConfig.from_mapping(config.get("model"))
     data_view = str(config.get("data_view", "roi" if model.name.lower().startswith("roi") else "global"))
@@ -53,6 +72,8 @@ def main(argv=None) -> int:
         fold_metrics.append(metrics)
         print(metrics)
     oof = pd.concat(all_predictions, ignore_index=True).sort_values("uid")
+    if "domain_group" in metadata:
+        oof = oof.merge(metadata[["uid", "domain_group"]], on="uid", how="left", validate="one_to_one")
     Path(args.oof).parent.mkdir(parents=True, exist_ok=True)
     oof.to_csv(args.oof, index=False)
     from datscan.training.evaluate import evaluate_oof
