@@ -29,6 +29,8 @@ dat-spect-domains = "scripts.analyze_domains:main"
 dat-spect-evaluate-domains = "scripts.evaluate_domains:main"
 dat-spect-leave-one-domain = "scripts.create_leave_one_domain:main"
 dat-spect-train = "scripts.train_cv:main"
+dat-spect-build-features = "scripts.build_striatal_features:main"
+dat-spect-train-features = "scripts.train_feature_cv:main"
 dat-spect-calibrate = "scripts.calibrate:main"
 dat-spect-package = "scripts.package_submission:main"
 

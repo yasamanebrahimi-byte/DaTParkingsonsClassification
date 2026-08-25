@@ -1,0 +1,311 @@
+{
+  "version": 3,
+  "method": "grid_search_weighted_probability_mean",
+  "members": [
+    "artifacts/tmp_feature_test/cnn_oof.csv",
+    "artifacts/tmp_feature_test/feature_oof.csv"
+  ],
+  "member_names": [
+    "cnn",
+    "feature"
+  ],
+  "weights": [
+    1.0,
+    0.0
+  ],
+  "grid_step": 0.05,
+  "grid": [
+    {
+      "global_weight": 0.0,
+      "roi_weight": 1.0,
+      "log_loss": 0.35667494393873245,
+      "brier_score": 0.09000000000000001,
+      "accuracy": 1.0,
+      "sensitivity": 1.0,
+      "specificity": 1.0,
+      "ece": 0.30000000000000004,
+      "auroc": 1.0
+    },
+    {
+      "global_weight": 0.05,
+      "roi_weight": 0.95,
+      "log_loss": 0.3495574761698684,
+      "brier_score": 0.087025,
+      "accuracy": 1.0,
+      "sensitivity": 1.0,
+      "specificity": 1.0,
+      "ece": 0.29500000000000004,
+      "auroc": 1.0
+    },
+    {
+      "global_weight": 0.1,
+      "roi_weight": 0.9,
+      "log_loss": 0.342490308946776,
+      "brier_score": 0.08410000000000004,
+      "accuracy": 1.0,
+      "sensitivity": 1.0,
+      "specificity": 1.0,
+      "ece": 0.29000000000000004,
+      "auroc": 1.0
+    },
+    {
+      "global_weight": 0.15,
+      "roi_weight": 0.85,
+      "log_loss": 0.33547273628812946,
+      "brier_score": 0.08122500000000002,
+      "accuracy": 1.0,
+      "sensitivity": 1.0,
+      "specificity": 1.0,
+      "ece": 0.28500000000000003,
+      "auroc": 1.0
+    },
+    {
+      "global_weight": 0.2,
+      "roi_weight": 0.8,
+      "log_loss": 0.3285040669720361,
+      "brier_score": 0.07840000000000001,
+      "accuracy": 1.0,
+      "sensitivity": 1.0,
+      "specificity": 1.0,
+      "ece": 0.28,
+      "auroc": 1.0
+    },
+    {
+      "global_weight": 0.25,
+      "roi_weight": 0.75,
+      "log_loss": 0.32158362412746233,
+      "brier_score": 0.07562500000000003,
+      "accuracy": 1.0,
+      "sensitivity": 1.0,
+      "specificity": 1.0,
+      "ece": 0.275,
+      "auroc": 1.0
+    },
+    {
+      "global_weight": 0.3,
+      "roi_weight": 0.7,
+      "log_loss": 0.3147107448397003,
+      "brier_score": 0.07289999999999999,
+      "accuracy": 1.0,
+      "sensitivity": 1.0,
+      "specificity": 1.0,
+      "ece": 0.27,
+      "auroc": 1.0
+    },
+    {
+      "global_weight": 0.35,
+      "roi_weight": 0.65,
+      "log_loss": 0.3078847797693005,
+      "brier_score": 0.07022500000000004,
+      "accuracy": 1.0,
+      "sensitivity": 1.0,
+      "specificity": 1.0,
+      "ece": 0.26500000000000007,
+      "auroc": 1.0
+    },
+    {
+      "global_weight": 0.4,
+      "roi_weight": 0.6,
+      "log_loss": 0.3011050927839216,
+      "brier_score": 0.06760000000000001,
+      "accuracy": 1.0,
+      "sensitivity": 1.0,
+      "specificity": 1.0,
+      "ece": 0.26,
+      "auroc": 1.0
+    },
+    {
+      "global_weight": 0.45,
+      "roi_weight": 0.55,
+      "log_loss": 0.29437106060257745,
+      "brier_score": 0.06502499999999997,
+      "accuracy": 1.0,
+      "sensitivity": 1.0,
+      "specificity": 1.0,
+      "ece": 0.25499999999999995,
+      "auroc": 1.0
+    },
+    {
+      "global_weight": 0.5,
+      "roi_weight": 0.5,
+      "log_loss": 0.2876820724517809,
+      "brier_score": 0.0625,
+      "accuracy": 1.0,
+      "sensitivity": 1.0,
+      "specificity": 1.0,
+      "ece": 0.25,
+      "auroc": 1.0
+    },
+    {
+      "global_weight": 0.55,
+      "roi_weight": 0.44999999999999996,
+      "log_loss": 0.28103752973311236,
+      "brier_score": 0.060024999999999995,
+      "accuracy": 1.0,
+      "sensitivity": 1.0,
+      "specificity": 1.0,
+      "ece": 0.245,
+      "auroc": 1.0
+    },
+    {
+      "global_weight": 0.6,
+      "roi_weight": 0.4,
+      "log_loss": 0.2744368457017603,
+      "brier_score": 0.0576,
+      "accuracy": 1.0,
+      "sensitivity": 1.0,
+      "specificity": 1.0,
+      "ece": 0.24,
+      "auroc": 1.0
+    },
+    {
+      "global_weight": 0.65,
+      "roi_weight": 0.35,
+      "log_loss": 0.26787944515560114,
+      "brier_score": 0.05522499999999999,
+      "accuracy": 1.0,
+      "sensitivity": 1.0,
+      "specificity": 1.0,
+      "ece": 0.235,
+      "auroc": 1.0
+    },
+    {
+      "global_weight": 0.7,
+      "roi_weight": 0.30000000000000004,
+      "log_loss": 0.26136476413440757,
+      "brier_score": 0.05289999999999999,
+      "accuracy": 1.0,
+      "sensitivity": 1.0,
+      "specificity": 1.0,
+      "ece": 0.22999999999999998,
+      "auroc": 1.0
+    },
+    {
+      "global_weight": 0.75,
+      "roi_weight": 0.25,
+      "log_loss": 0.25489224962879,
+      "brier_score": 0.050624999999999976,
+      "accuracy": 1.0,
+      "sensitivity": 1.0,
+      "specificity": 1.0,
+      "ece": 0.22499999999999995,
+      "auroc": 1.0
+    },
+    {
+      "global_weight": 0.8,
+      "roi_weight": 0.19999999999999996,
+      "log_loss": 0.2484613592984996,
+      "brier_score": 0.0484,
+      "accuracy": 1.0,
+      "sensitivity": 1.0,
+      "specificity": 1.0,
+      "ece": 0.22,
+      "auroc": 1.0
+    },
+    {
+      "global_weight": 0.85,
+      "roi_weight": 0.15000000000000002,
+      "log_loss": 0.24207156119972867,
+      "brier_score": 0.046225,
+      "accuracy": 1.0,
+      "sensitivity": 1.0,
+      "specificity": 1.0,
+      "ece": 0.215,
+      "auroc": 1.0
+    },
+    {
+      "global_weight": 0.9,
+      "roi_weight": 0.09999999999999998,
+      "log_loss": 0.2357223335210698,
+      "brier_score": 0.0441,
+      "accuracy": 1.0,
+      "sensitivity": 1.0,
+      "specificity": 1.0,
+      "ece": 0.21,
+      "auroc": 1.0
+    },
+    {
+      "global_weight": 0.95,
+      "roi_weight": 0.050000000000000044,
+      "log_loss": 0.22941316432780517,
+      "brier_score": 0.04202499999999999,
+      "accuracy": 1.0,
+      "sensitivity": 1.0,
+      "specificity": 1.0,
+      "ece": 0.205,
+      "auroc": 1.0
+    },
+    {
+      "global_weight": 1.0,
+      "roi_weight": 0.0,
+      "log_loss": 0.2231435513142097,
+      "brier_score": 0.039999999999999994,
+      "accuracy": 1.0,
+      "sensitivity": 1.0,
+      "specificity": 1.0,
+      "ece": 0.19999999999999998,
+      "auroc": 1.0
+    }
+  ],
+  "metrics": {
+    "cnn": {
+      "log_loss": 0.2231435513142097,
+      "brier_score": 0.039999999999999994,
+      "accuracy": 1.0,
+      "sensitivity": 1.0,
+      "specificity": 1.0,
+      "ece": 0.19999999999999998,
+      "auroc": 1.0
+    },
+    "feature": {
+      "log_loss": 0.35667494393873245,
+      "brier_score": 0.09000000000000001,
+      "accuracy": 1.0,
+      "sensitivity": 1.0,
+      "specificity": 1.0,
+      "ece": 0.30000000000000004,
+      "auroc": 1.0
+    },
+    "50/50 blend": {
+      "log_loss": 0.2876820724517809,
+      "brier_score": 0.0625,
+      "accuracy": 1.0,
+      "sensitivity": 1.0,
+      "specificity": 1.0,
+      "ece": 0.25,
+      "auroc": 1.0
+    },
+    "optimized probability blend": {
+      "log_loss": 0.2231435513142097,
+      "brier_score": 0.039999999999999994,
+      "accuracy": 1.0,
+      "sensitivity": 1.0,
+      "specificity": 1.0,
+      "ece": 0.19999999999999998,
+      "auroc": 1.0
+    },
+    "optimized logit blend": {
+      "log_loss": 0.2231435513142097,
+      "brier_score": 0.039999999999999994,
+      "accuracy": 1.0,
+      "sensitivity": 1.0,
+      "specificity": 1.0,
+      "ece": 0.19999999999999998,
+      "auroc": 1.0
+    }
+  },
+  "diversity": {
+    "pearson_probability_correlation": 1.0,
+    "spearman_probability_correlation": 1.0,
+    "classification_disagreement_count": 0,
+    "classification_disagreement_fraction": 0.0,
+    "disagreement_log_loss_global": NaN,
+    "disagreement_log_loss_roi": NaN,
+    "global_confident_wrong_feature_correct_count": 0,
+    "feature_confident_wrong_global_correct_count": 0
+  },
+  "oof_path": "artifacts\\tmp_feature_test\\cnn_feature_oof.csv",
+  "high_loss_cases_path": "artifacts\\tmp_feature_test\\cnn_feature_high_loss_cases.csv",
+  "ensemble_worse_cases_path": "artifacts\\tmp_feature_test\\cnn_feature_ensemble_worse_cases.csv",
+  "calibration_stage": "after_ensemble"
+}

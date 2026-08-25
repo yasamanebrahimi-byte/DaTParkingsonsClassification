@@ -1,0 +1,38 @@
+seed: 20260824
+
+# Keep this preprocessing aligned with the image branch used for the final
+# ensemble.  It is explicit here so feature extraction is reproducible when
+# run independently of a CNN training command.
+preprocessing:
+  version: "striatal-features-1"
+  target_spacing_mm: 2.5
+  output_shape: [112, 112, 112]
+  foreground_quantile: 0.01
+  foreground_threshold_fraction: 0.05
+  intensity_percentile: 99.5
+  clip_max: 2.0
+  eps: 1.0e-6
+  pad_value: 0.0
+
+roi:
+  enabled: true
+  roi_shape: [64, 64, 48]
+  center_max_shift_fraction: 0.25
+
+features:
+  source: roi
+  background:
+    method: surrounding_tissue
+    border_fraction: 0.15
+    exclude_relative: 0.40
+    epsilon: 1.0e-6
+  high_uptake:
+    relative_thresholds: [0.40, 0.50, 0.60]
+    primary_threshold: 0.50
+  include:
+    uptake: true
+    asymmetry: true
+    background_ratios: true
+    anterior_posterior: true
+    morphology: true
+    shape: true

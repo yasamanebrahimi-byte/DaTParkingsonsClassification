@@ -1,0 +1,8 @@
+{
+  "method": "temperature_scaling",
+  "temperature": 1.2347721227426784,
+  "stage": "before_ensemble",
+  "enabled": true,
+  "raw_log_loss": 0.37966511723579527,
+  "calibrated_log_loss": 0.3725201594688377
+}

@@ -1,0 +1,1 @@
+Model checkpoints and calibration are inserted here by `scripts/package_submission.py` after cross-validation and OOF calibration. The repository intentionally does not ship random or untrained weights.

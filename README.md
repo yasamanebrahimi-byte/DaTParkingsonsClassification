@@ -269,7 +269,85 @@ A competition-like simulation can be run after a package and test data are avail
 
 Seeds are set for Python, NumPy, PyTorch, CUDA, and fold generation. Preprocessing is configuration-driven and is duplicated in the submission only as a minimal dependency-free copy; synthetic tests cover orientation, physical resampling, normalization, crop/pad, model output, and submission validation. Corrupt images and missing assets raise explicit errors rather than silently emitting 0.5.
 
-Registration, quantitative feature models, TTA, and other priorities remain
-out of scope. The ROI model and learned global/ROI weight are controlled
-experiments and should be retained only when OOF log-loss and stability
-evidence justify them.
+## Quantitative striatal feature branch
+
+Priority 5 is implemented as an independent, deterministic branch. Scans are
+loaded in canonical RAS orientation, resampled in physical space, normalized
+per examination, and passed through the existing bilateral ROI center logic.
+In the canonical ROI, axis 0 low/high halves are documented as left/right and
+axis 1 low/high halves as posterior/anterior. The model uses image-derived
+uptake, asymmetry, background-ratio, anterior/posterior, morphology, and shape
+features; acquisition metadata are intentionally excluded.
+
+Build the feature table and validation report:
+
+```powershell
+python scripts/build_striatal_features.py `
+  --metadata artifacts/metadata/train_metadata.csv `
+  --config configs/striatal_features.yaml `
+  --output artifacts/features/striatal_features.csv `
+  --report artifacts/reports/striatal_feature_validation.md
+```
+
+Train the two supported classical baselines with the canonical fold file:
+
+```powershell
+python scripts/train_feature_cv.py `
+  --features artifacts/features/striatal_features.csv `
+  --folds artifacts/folds/folds.csv `
+  --model logistic `
+  --oof artifacts/metrics/striatal_logistic_oof.csv `
+  --output-dir artifacts/feature_models/striatal_logistic
+
+python scripts/train_feature_cv.py `
+  --features artifacts/features/striatal_features.csv `
+  --folds artifacts/folds/folds.csv `
+  --model histgb `
+  --oof artifacts/metrics/striatal_histgb_oof.csv `
+  --output-dir artifacts/feature_models/striatal_histgb
+```
+
+For a family ablation, pass for example
+`--feature-families uptake,asymmetry,background_ratio`. Logistic scaling is
+fit inside each outer training fold; `--tune-C` performs its regularization
+search inside those training partitions only. The optional `feature_mlp`
+model keeps the existing `FeatureMLP` available for comparison.
+
+Build a CNN + feature OOF ensemble. The generic mode reports CNN-only,
+feature-only, 50/50, optimized probability, and optimized logit blends, plus
+prediction diversity and high-loss case artifacts:
+
+```powershell
+python scripts/build_ensemble.py `
+  --predictions artifacts/metrics/highres_scanner_aug_oof.csv `
+               artifacts/metrics/striatal_logistic_oof.csv `
+  --member-names cnn feature `
+  --output artifacts/ensemble/cnn_feature.json
+```
+
+Calibrate the selected OOF ensemble only after the ensemble comparison:
+
+```powershell
+python scripts/calibrate.py `
+  --oof artifacts/ensemble/cnn_feature_oof.csv `
+  --probability-column ensemble_probability `
+  --output artifacts/calibration/cnn_feature_temperature.json
+```
+
+Package the CNN checkpoints, feature-model folds, feature configuration, OOF
+ensemble manifest, and calibration together:
+
+```powershell
+python scripts/package_submission.py `
+  --checkpoint-dir artifacts/checkpoints_highres_scanner_aug `
+  --feature-model-dir artifacts/feature_models/striatal_logistic `
+  --feature-config configs/striatal_features.yaml `
+  --ensemble artifacts/ensemble/cnn_feature.json `
+  --calibration artifacts/calibration/cnn_feature_temperature.json `
+  --output submission_cnn_feature.zip
+```
+
+The package reuses the CNN's normalized view, extracts the feature ROI once
+per examination, averages fold predictions, applies the OOF-derived ensemble
+weight, and then applies optional after-ensemble temperature scaling. No test
+distribution statistics or labels are used.
