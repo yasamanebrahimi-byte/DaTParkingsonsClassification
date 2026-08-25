@@ -17,7 +17,7 @@ from .utils import validate_submission
 
 def run_inference(root: Path) -> None:
     data_dir = root / "data"
-    assets = root / "src" / "assets"
+    assets = root / "assets"
     template_path = data_dir / "submission_format.csv"
     output_path = root / "submission.csv"
     if not template_path.exists():
@@ -60,4 +60,3 @@ def run_inference(root: Path) -> None:
     output.to_csv(output_path, index=False)
     print("Writing submission")
     print("Submission validation passed")
-

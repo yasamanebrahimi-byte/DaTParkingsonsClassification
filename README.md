@@ -106,11 +106,10 @@ Before packaging a trained solution, run the source tests:
 python -m pytest
 ```
 
-A competition-like simulation can be run after a package and test data are available by extracting the ZIP into `mock_runtime/src/`, placing a read-only-style `data/niftis/` and `data/submission_format.csv` beside it, and invoking `python mock_runtime/src/main.py`. The same `datscan_inference` code is used by the packaged entry point; no training repository import is required.
+A competition-like simulation can be run after a package and test data are available by extracting the ZIP directly into `mock_runtime/`, placing a read-only-style `data/niftis/` and `data/submission_format.csv` beside it, and invoking `python mock_runtime/main.py`. The same `datscan_inference` code is used by the packaged entry point; no training repository import is required.
 
 ## Reproducibility and safety
 
 Seeds are set for Python, NumPy, PyTorch, CUDA, and fold generation. Preprocessing is configuration-driven and is duplicated in the submission only as a minimal dependency-free copy; synthetic tests cover orientation, physical resampling, normalization, crop/pad, model output, and submission validation. Corrupt images and missing assets raise explicit errors rather than silently emitting 0.5.
 
 Registration, ROI networks, quantitative feature models, TTA, and learned ensemble weights remain extension points. They should be adopted only after controlled OOF log-loss evidence and domain-robustness diagnostics justify them.
-

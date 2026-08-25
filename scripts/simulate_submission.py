@@ -26,13 +26,12 @@ def main(argv=None) -> int:
     with tempfile.TemporaryDirectory(prefix="datscan_mock_runtime_") as temp:
         runtime = Path(temp)
         data = runtime / "data"
-        source = runtime / "src"
         (data / "niftis").mkdir(parents=True)
         shutil.copytree(args.niftis, data / "niftis", dirs_exist_ok=True)
         shutil.copy2(args.template, data / "submission_format.csv")
         with zipfile.ZipFile(args.package) as archive:
-            archive.extractall(source)
-        subprocess.run([sys.executable, str(source / "main.py")], cwd=runtime, check=True)
+            archive.extractall(runtime)
+        subprocess.run([sys.executable, str(runtime / "main.py")], cwd=runtime, check=True)
         output = runtime / "submission.csv"
         if not output.exists():
             raise RuntimeError("Packaged inference did not write submission.csv")
