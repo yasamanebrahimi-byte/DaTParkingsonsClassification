@@ -36,6 +36,10 @@ def combine_logits(logits, method: str = "logit_mean", weights=None) -> tuple[np
     probabilities = expit(matrix)
     if normalized in {"probability_mean", "mean_probabilities"}:
         return np.asarray(clip_probabilities(probabilities.mean()), dtype=float), "probability"
+    if normalized in {"median_probability", "median_probabilities"}:
+        if weights is not None:
+            raise ValueError("median probability aggregation does not accept weights")
+        return np.asarray(clip_probabilities(np.median(probabilities)), dtype=float), "probability"
     if normalized in {"weighted_probability_mean", "weighted_probabilities"}:
         if weights is None:
             raise ValueError("weighted probability mean requires weights")

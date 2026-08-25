@@ -17,6 +17,8 @@ ENSEMBLE_METHODS = {
     "mean_probabilities",
     "weighted_probability_mean",
     "weighted_probabilities",
+    "median_probability",
+    "median_probabilities",
 }
 
 
@@ -51,6 +53,13 @@ def mean_probabilities(logits: np.ndarray, weights: np.ndarray | list[float] | N
     return safe_probabilities((probabilities * normalized[:, None]).sum(axis=0))
 
 
+def median_probabilities(logits: np.ndarray) -> np.ndarray:
+    """Median of member probabilities, retained as a robust diagnostic."""
+
+    matrix = _member_matrix(logits, "logits")
+    return safe_probabilities(np.median(expit(matrix), axis=0))
+
+
 def weighted_probability_mean(probabilities: np.ndarray, weights: np.ndarray | list[float]) -> np.ndarray:
     """Weighted probability mean using only weights learned from aligned OOF rows."""
 
@@ -73,6 +82,10 @@ def combine_logits(
         return mean_logits(logits)
     if normalized_method in {"probability_mean", "mean_probabilities"}:
         return mean_probabilities(logits, weights=weights)
+    if normalized_method in {"median_probability", "median_probabilities"}:
+        if weights is not None:
+            raise ValueError("median probability aggregation does not accept weights")
+        return median_probabilities(logits)
     if normalized_method in {"weighted_probability_mean", "weighted_probabilities"}:
         if weights is None:
             raise ValueError("weighted probability mean requires weights")

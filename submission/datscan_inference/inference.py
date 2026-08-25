@@ -100,9 +100,27 @@ def run_inference(root: Path) -> None:
     output_path = root / "submission.csv"
     if not template_path.exists():
         raise FileNotFoundError(f"Missing submission template: {template_path}")
-    global_paths = sorted(assets.glob("global_model_*.pt"))
-    roi_paths = sorted(assets.glob("roi_model_*.pt"))
-    legacy_paths = sorted(assets.glob("model_*.pt"))
+    model_manifest_path = assets / "ensemble_manifest.json"
+    model_manifest = json.loads(model_manifest_path.read_text(encoding="utf-8")) if model_manifest_path.exists() else None
+    if model_manifest is not None:
+        manifest_models = model_manifest.get("models")
+        if not isinstance(manifest_models, list) or not manifest_models:
+            raise ValueError("ensemble_manifest.json must contain a non-empty models list")
+        global_paths, roi_paths = [], []
+        for member in manifest_models:
+            raw_path = Path(str(member.get("checkpoint", "")))
+            path = raw_path if raw_path.is_absolute() else assets / raw_path
+            if not path.exists():
+                path = assets / raw_path.name
+            if not path.exists():
+                raise FileNotFoundError(f"Manifest checkpoint is missing from assets: {raw_path}")
+            view = str(member.get("data_view", "roi" if str(member.get("model_family", "")).lower().startswith("roi") else "global")).lower()
+            (roi_paths if view == "roi" else global_paths).append(path)
+        legacy_paths = []
+    else:
+        global_paths = sorted(assets.glob("global_model_*.pt"))
+        roi_paths = sorted(assets.glob("roi_model_*.pt"))
+        legacy_paths = sorted(assets.glob("model_*.pt"))
     if not global_paths and not legacy_paths:
         raise FileNotFoundError("No packaged global model checkpoints found")
     if global_paths and legacy_paths:
@@ -121,10 +139,11 @@ def run_inference(root: Path) -> None:
         if roi_config is None or not roi_config.enabled:
             raise ValueError("ROI checkpoint metadata must include roi.enabled=true")
 
-    manifest_path = assets / "ensemble.json"
-    manifest = json.loads(manifest_path.read_text(encoding="utf-8")) if manifest_path.exists() else None
-    fold_ensemble_method = str((manifest or {}).get("ensemble_method", "logit_mean"))
-    global_fold_weights = (manifest or {}).get("global_fold_weights", (manifest or {}).get("fold_weights"))
+    legacy_manifest_path = assets / "ensemble.json"
+    manifest = json.loads(legacy_manifest_path.read_text(encoding="utf-8")) if legacy_manifest_path.exists() else None
+    fold_ensemble_method = str((model_manifest or {}).get("aggregation", (manifest or {}).get("ensemble_method", "logit_mean")))
+    manifest_weights = (model_manifest or {}).get("weights")
+    global_fold_weights = manifest_weights if manifest_weights is not None and len(global_paths) == len(manifest_weights) else (manifest or {}).get("global_fold_weights", (manifest or {}).get("fold_weights"))
     roi_fold_weights = (manifest or {}).get("roi_fold_weights", (manifest or {}).get("fold_weights"))
     if roi_models:
         if manifest is None:
@@ -150,7 +169,7 @@ def run_inference(root: Path) -> None:
     # New calibration artifacts carry the fold-combination contract.  This is
     # the source of truth for global-only packages without an ensemble.json;
     # old packages retain the historical logit-mean default.
-    if manifest is None or "ensemble_method" not in manifest:
+    if model_manifest is None and (manifest is None or "ensemble_method" not in manifest):
         fold_ensemble_method = str(calibration.get("ensemble_method", fold_ensemble_method))
         if global_fold_weights is None:
             global_fold_weights = calibration.get("global_fold_weights", calibration.get("fold_weights"))
@@ -158,7 +177,7 @@ def run_inference(root: Path) -> None:
             roi_fold_weights = calibration.get("roi_fold_weights", calibration.get("fold_weights"))
     temperature = float(calibration.get("temperature", 1.0))
     calibration_enabled = bool(calibration.get("enabled", True))
-    after_ensemble = bool(manifest and manifest.get("calibration_stage") == "after_ensemble") or calibration.get("stage") == "after_ensemble"
+    after_ensemble = bool((model_manifest or manifest) and (model_manifest or manifest).get("calibration_stage") == "after_ensemble") or calibration.get("stage") == "after_ensemble"
     feature_weight = None
     cnn_weight = None
     feature_method = "probability"

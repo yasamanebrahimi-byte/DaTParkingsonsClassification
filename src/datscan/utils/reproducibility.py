@@ -23,3 +23,11 @@ def seed_everything(seed: int, deterministic: bool = False) -> None:
     except ImportError:
         pass
 
+
+def derive_seed(base_seed: int, *components: int) -> int:
+    """Derive a stable non-negative seed without relying on Python's hash randomization."""
+
+    value = int(base_seed) & 0x7FFFFFFF
+    for component in components:
+        value = (value * 1_000_003 + int(component) * 97_409 + 17) & 0x7FFFFFFF
+    return value

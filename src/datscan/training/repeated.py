@@ -12,6 +12,7 @@ from ..utils.metrics import binary_metrics, safe_probabilities
 
 
 REPEATED_OOF_COLUMNS = ["uid", "target", "repeat", "fold", "logit", "probability"]
+REPEATED_OOF_METADATA_COLUMNS = ["fold_seed", "training_seed", "experiment_name"]
 
 
 def validate_repeated_oof(frame: pd.DataFrame, n_repeats: int | None = None) -> None:
@@ -20,21 +21,28 @@ def validate_repeated_oof(frame: pd.DataFrame, n_repeats: int | None = None) -> 
     missing = sorted(set(REPEATED_OOF_COLUMNS) - set(frame.columns))
     if missing:
         raise ValueError(f"Repeated OOF file is missing columns: {missing}")
-    if frame.duplicated(["uid", "repeat"]).any():
-        raise ValueError("Repeated OOF contains duplicate UID/repeat predictions")
+    key_columns = ["uid", "repeat"]
+    if "training_seed" in frame.columns:
+        key_columns.append("training_seed")
+    if frame.duplicated(key_columns).any():
+        raise ValueError(f"Repeated OOF contains duplicate {'/'.join(key_columns)} predictions")
     if not np.isfinite(frame[["target", "repeat", "fold", "logit", "probability"]].to_numpy(dtype=float)).all():
         raise ValueError("Repeated OOF contains non-finite values")
     probabilities = expit(frame["logit"].to_numpy(dtype=float))
     if not np.allclose(probabilities, frame["probability"].to_numpy(dtype=float), atol=1e-5, rtol=1e-5):
         raise ValueError("Repeated OOF probability must be sigmoid(logit)")
+    repeat_counts = frame.groupby(["uid", "repeat"], sort=False).size()
+    if repeat_counts.empty or not (repeat_counts == repeat_counts.iloc[0]).all():
+        bad = repeat_counts[repeat_counts != repeat_counts.iloc[0]].head().to_dict() if not repeat_counts.empty else {}
+        raise ValueError(f"Every UID/repeat pair must have the same number of OOF predictions; mismatches={bad}")
     counts = frame.groupby("uid", sort=False)["repeat"].nunique()
-    expected = int(n_repeats if n_repeats is not None else counts.max())
-    if expected < 1 or not (counts == expected).all():
-        bad = counts[counts != expected].head().to_dict()
-        raise ValueError(f"Every UID must have exactly {expected} repeated OOF predictions; mismatches={bad}")
+    expected_repeats = int(n_repeats if n_repeats is not None else counts.max())
+    if expected_repeats < 1 or not (counts == expected_repeats).all():
+        bad = counts[counts != expected_repeats].head().to_dict()
+        raise ValueError(f"Every UID must have exactly {expected_repeats} repeated OOF partitions; mismatches={bad}")
     repeat_values = set(int(value) for value in frame["repeat"].unique())
-    if repeat_values != set(range(expected)):
-        raise ValueError(f"Repeat IDs must be contiguous 0..{expected - 1}")
+    if repeat_values != set(range(expected_repeats)):
+        raise ValueError(f"Repeat IDs must be contiguous 0..{expected_repeats - 1}")
     per_repeat = frame.groupby("repeat")["uid"].nunique()
     if per_repeat.nunique() != 1:
         raise ValueError("Each repeated OOF split must cover the same UIDs")
@@ -71,7 +79,7 @@ def validate_repeated_oof_assignments(
         if assignments["uid"].duplicated().any():
             raise ValueError(f"Repeat {repeat} has duplicate fold assignments")
         observed = repeated_oof[repeated_oof["repeat"] == repeat]
-        merged = observed[["uid", "fold"]].copy()
+        merged = observed[["uid", "fold"]].drop_duplicates().copy()
         merged["uid"] = merged["uid"].astype(str)
         merged = merged.merge(assignments[["uid", "fold"]], on="uid", how="left", suffixes=("_oof", "_assignment"), validate="one_to_one")
         if merged["fold_assignment"].isna().any() or not np.array_equal(merged["fold_oof"].to_numpy(), merged["fold_assignment"].to_numpy()):
@@ -94,6 +102,7 @@ def aggregate_repeated_oof(frame: pd.DataFrame, n_repeats: int | None = None) ->
         n_predictions=("repeat", "size"),
         mean_logit=("logit", "mean"),
         mean_probability=("probability", "mean"),
+        median_probability=("probability", "median"),
         prediction_std=("probability", "std"),
         prediction_min=("probability", "min"),
         prediction_max=("probability", "max"),
@@ -101,7 +110,9 @@ def aggregate_repeated_oof(frame: pd.DataFrame, n_repeats: int | None = None) ->
     summary["prediction_std"] = summary["prediction_std"].fillna(0.0)
     summary["prob_from_mean_logit"] = safe_probabilities(expit(summary["mean_logit"].to_numpy(dtype=float)))
     summary["prediction_mean"] = summary["mean_probability"]
-    expected = int(n_repeats if n_repeats is not None else source["repeat"].nunique())
+    expected_repeats = int(n_repeats if n_repeats is not None else source["repeat"].nunique())
+    predictions_per_partition = int(source.groupby(["uid", "repeat"], sort=False).size().iloc[0])
+    expected = expected_repeats * predictions_per_partition
     if not (summary["n_predictions"] == expected).all():
         raise ValueError(f"Every UID must have exactly {expected} repeated OOF predictions")
     return summary[
@@ -113,6 +124,7 @@ def aggregate_repeated_oof(frame: pd.DataFrame, n_repeats: int | None = None) ->
             "prob_from_mean_logit",
             "mean_probability",
             "prediction_mean",
+            "median_probability",
             "prediction_std",
             "prediction_min",
             "prediction_max",
@@ -125,10 +137,13 @@ def repeated_summary_metrics(summary: pd.DataFrame) -> dict[str, dict[str, float
     missing = required - set(summary.columns)
     if missing:
         raise ValueError(f"Repeated summary is missing columns: {sorted(missing)}")
-    return {
+    result = {
         "mean_logits": binary_metrics(summary["target"], summary["prob_from_mean_logit"]),
         "mean_probabilities": binary_metrics(summary["target"], summary["mean_probability"]),
     }
+    if "median_probability" in summary.columns:
+        result["median_probabilities"] = binary_metrics(summary["target"], summary["median_probability"])
+    return result
 
 
 def variance_loss_diagnostics(summary: pd.DataFrame) -> pd.DataFrame:

@@ -26,8 +26,10 @@ def main(argv=None) -> int:
     uncertainty_path = Path(args.output).with_name(f"{Path(args.output).stem}_uncertainty.csv")
     uncertainty.to_csv(uncertainty_path, index=False)
     association = float(uncertainty["prediction_std"].corr(uncertainty["per_sample_log_loss"])) if len(uncertainty) > 1 else float("nan")
+    rank_association = float(uncertainty["prediction_std"].corr(uncertainty["per_sample_log_loss"], method="spearman")) if len(uncertainty) > 1 else float("nan")
     print(pd.DataFrame(repeated_summary_metrics(summary)).T[["log_loss", "brier_score", "auroc"]].to_string())
     print(f"Prediction-std/log-loss Pearson correlation: {association:.6f}")
+    print(f"Prediction-std/log-loss Spearman correlation: {rank_association:.6f}")
     print(f"Wrote repeated OOF summary with {len(summary)} UIDs to {args.output}")
     print(f"Wrote uncertainty diagnostics to {uncertainty_path}")
     return 0

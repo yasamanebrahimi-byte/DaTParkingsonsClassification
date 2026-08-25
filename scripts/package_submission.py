@@ -21,6 +21,7 @@ def main(argv=None) -> int:
     parser.add_argument("--global-checkpoint-dir")
     parser.add_argument("--roi-checkpoint-dir")
     parser.add_argument("--ensemble", help="OOF-derived global/ROI ensemble JSON")
+    parser.add_argument("--manifest", "--ensemble-manifest", dest="manifest", help="Checkpoint manifest produced by build_model_manifest.py")
     parser.add_argument("--feature-model-dir", help="Directory containing model_fold*.pkl and feature_columns.json")
     parser.add_argument("--feature-config", help="Quantitative feature YAML configuration")
     parser.add_argument("--calibration", default="artifacts/calibration/temperature.json")
@@ -29,9 +30,13 @@ def main(argv=None) -> int:
     parser.add_argument("--output", default="submission.zip")
     parser.add_argument("--allow-empty", action="store_true", help="Build source-only package for scaffold testing")
     args = parser.parse_args(argv)
+    if args.manifest and args.ensemble:
+        parser.error("--manifest and --ensemble are mutually exclusive")
     root = Path(__file__).resolve().parents[1]
     output_path = _absolute(root, args.output)
     calibration_path = _absolute(root, args.calibration)
+    manifest_path = _absolute(root, args.manifest) if args.manifest else None
+    selected_manifest = json.loads(manifest_path.read_text(encoding="utf-8")) if manifest_path else None
     global_dir = _absolute(root, args.global_checkpoint_dir or args.checkpoint_dir)
     roi_dir = _absolute(root, args.roi_checkpoint_dir) if args.roi_checkpoint_dir else None
     feature_dir = _absolute(root, args.feature_model_dir) if args.feature_model_dir else None
@@ -42,10 +47,26 @@ def main(argv=None) -> int:
     if roi_dir and not roi_checkpoints:
         roi_checkpoints = sorted(roi_dir.glob("roi_model_fold*.pt"))
     feature_models = sorted(feature_dir.glob("model_fold*.pkl")) if feature_dir else []
-    new_package = bool(args.global_checkpoint_dir or args.roi_checkpoint_dir or args.ensemble or feature_dir)
+    new_package = bool(args.global_checkpoint_dir or args.roi_checkpoint_dir or args.ensemble or args.manifest or feature_dir)
+    manifest_checkpoints = []
+    if selected_manifest is not None:
+        models = selected_manifest.get("models")
+        if not isinstance(models, list) or not models:
+            raise SystemExit("Checkpoint manifest must contain a non-empty models list")
+        for index, member in enumerate(models):
+            if not isinstance(member, dict) or not member.get("checkpoint"):
+                raise SystemExit(f"Manifest model {index} is missing checkpoint")
+            raw_path = Path(str(member["checkpoint"]))
+            candidates = [raw_path] if raw_path.is_absolute() else [root / raw_path, manifest_path.parent / raw_path, manifest_path.parent.parent / raw_path]
+            checkpoint = next((candidate for candidate in candidates if candidate.exists()), None)
+            if checkpoint is None:
+                raise SystemExit(f"Manifest checkpoint does not resolve: {member['checkpoint']}")
+            manifest_checkpoints.append((checkpoint, dict(member)))
+        global_checkpoints = []
+        roi_checkpoints = []
     if roi_checkpoints and not args.ensemble:
         raise SystemExit("ROI checkpoints require --ensemble with OOF-derived weights")
-    if not global_checkpoints and not args.allow_empty:
+    if not global_checkpoints and not roi_checkpoints and not manifest_checkpoints and not args.allow_empty:
         raise SystemExit("No trained global checkpoints found; train the model before packaging")
     if roi_checkpoints and len(roi_checkpoints) != len(global_checkpoints):
         raise SystemExit("Global and ROI checkpoint counts do not match")
@@ -70,7 +91,21 @@ def main(argv=None) -> int:
             shutil.copy2(feature_dir / "feature_columns.json", assets / "feature_columns.json")
             shutil.copy2(_absolute(root, args.feature_config), assets / "striatal_features.yaml")
             shutil.copy2(root / "submission" / "datscan_inference" / "feature_support.py", staging / "datscan_inference" / "feature_support.py")
-        if new_package:
+        packaged_manifest = None
+        if manifest_checkpoints:
+            packaged_models = []
+            for index, (checkpoint, member) in enumerate(manifest_checkpoints):
+                view = str(member.get("data_view", "roi" if str(member.get("model_family", "")).lower().startswith("roi") else "global")).lower()
+                prefix = "roi_model" if view == "roi" else "global_model"
+                asset_name = f"{prefix}_member_{index:03d}.pt"
+                shutil.copy2(checkpoint, assets / asset_name)
+                member["checkpoint"] = asset_name
+                member["asset_name"] = asset_name
+                packaged_models.append(member)
+            packaged_manifest = dict(selected_manifest)
+            packaged_manifest["models"] = packaged_models
+            (assets / "ensemble_manifest.json").write_text(json.dumps(packaged_manifest, indent=2, allow_nan=False), encoding="utf-8")
+        elif new_package:
             for checkpoint in global_checkpoints:
                 shutil.copy2(checkpoint, assets / checkpoint.name.replace("resnet3d_", "global_model_"))
             for checkpoint in roi_checkpoints:
@@ -96,9 +131,11 @@ def main(argv=None) -> int:
             names = set(archive.namelist())
             if "main.py" not in names or not any(name.startswith("datscan_inference/") for name in names):
                 raise RuntimeError("submission.zip does not have the required root layout")
-            if roi_checkpoints and "ensemble.json" not in names:
+            if roi_checkpoints and "assets/ensemble.json" not in names:
                 raise RuntimeError("ROI package is missing ensemble.json")
-    print(f"Wrote {output_path} with {len(global_checkpoints)} global and {len(roi_checkpoints)} ROI checkpoint(s)")
+            if manifest_checkpoints and "assets/ensemble_manifest.json" not in names:
+                raise RuntimeError("Manifest package is missing ensemble_manifest.json")
+    print(f"Wrote {output_path} with {len(global_checkpoints) + sum(1 for _, member in manifest_checkpoints if str(member.get('data_view', 'global')).lower() != 'roi')} global and {len(roi_checkpoints) + sum(1 for _, member in manifest_checkpoints if str(member.get('data_view', 'global')).lower() == 'roi')} ROI checkpoint(s)")
     return 0
 
 

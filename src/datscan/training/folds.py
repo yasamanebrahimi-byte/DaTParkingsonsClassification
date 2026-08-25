@@ -107,18 +107,29 @@ def load_repeated_folds(output_dir: str | Path) -> dict[int, pd.DataFrame]:
     manifest_path = destination / "manifest.json"
     if manifest_path.exists():
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-        paths = [(int(row["repeat"]), destination / row["path"]) for row in manifest.get("repeats", [])]
+        paths = [
+            (int(row["repeat"]), destination / row["path"], row)
+            for row in manifest.get("repeats", [])
+        ]
     else:
-        paths = [(int(path.stem.split("_")[-1]), path) for path in sorted(destination.glob("repeat_*.csv"))]
+        paths = [
+            (int(path.stem.split("_")[-1]), path, {})
+            for path in sorted(destination.glob("repeat_*.csv"))
+        ]
     if not paths:
         raise FileNotFoundError(f"No repeat_*.csv files found under {destination}")
     repeats = {}
-    for repeat, path in paths:
+    for repeat, path, manifest_row in paths:
         frame = pd.read_csv(path)
         if "uid" not in frame or "fold" not in frame:
             raise ValueError(f"Repeated fold file is missing uid/fold columns: {path}")
         if frame["uid"].duplicated().any():
             raise ValueError(f"Repeated fold file contains duplicate UIDs: {path}")
+        frame.attrs["repeat"] = int(repeat)
+        if "seed" in manifest_row:
+            frame.attrs["seed"] = int(manifest_row["seed"])
+        if "n_splits" in manifest_row:
+            frame.attrs["n_splits"] = int(manifest_row["n_splits"])
         repeats[repeat] = frame
     return repeats
 

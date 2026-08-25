@@ -322,6 +322,76 @@ re-estimation is required.
 
 The package contains `main.py` at its archive root, `datscan_inference/`, and `assets/`. `main.py` reads `/code_execution/data/submission_format.csv`, finds each UID under `/code_execution/data/niftis/`, preserves template ordering, and writes `/code_execution/submission.csv`.
 
+### Priority 7: repeated-model ensemble
+
+Priority 7 keeps `configs/highres_scanner_aug.yaml` as the controlled base
+experiment because it is the existing high-resolution scanner-robust CNN
+configuration. It does not introduce an architecture, preprocessing, or
+augmentation change. The recommended first run is three repeated stratified
+five-fold partitions with one training seed per repeat (15 models total).
+The fold seed is read from the saved repeat-fold manifest; the training seed
+controls model initialization, DataLoader ordering/workers, and augmentation.
+
+```powershell
+python scripts/create_repeated_folds.py `
+  --metadata artifacts/metadata/train_metadata.csv `
+  --output-dir artifacts/folds/priority7_repeated `
+  --n-splits 5 `
+  --n-repeats 3 `
+  --seed 20260824
+
+python scripts/train_repeated_cv.py `
+  --config configs/highres_scanner_aug.yaml `
+  --metadata artifacts/metadata/train_metadata.csv `
+  --fold-dir artifacts/folds/priority7_repeated `
+  --output-dir artifacts/repeated_cv/highres_scanner_aug_priority7 `
+  --training-seeds 20260824 20260825 20260826
+
+python scripts/aggregate_repeated_oof.py `
+  --oof artifacts/repeated_cv/highres_scanner_aug_priority7/repeated_oof.csv `
+  --output artifacts/metrics/highres_scanner_aug_priority7_summary.csv `
+  --n-repeats 3
+
+python scripts/analyze_seed_ensemble.py `
+  --oof artifacts/repeated_cv/highres_scanner_aug_priority7/repeated_oof.csv `
+  --output artifacts/reports/highres_scanner_aug_priority7_ensemble_analysis.md `
+  --max-ensemble-size 15
+
+python scripts/build_model_manifest.py `
+  --checkpoint-root artifacts/repeated_cv/highres_scanner_aug_priority7 `
+  --aggregation probability_mean `
+  --output artifacts/ensemble/highres_scanner_aug_priority7_manifest.json
+```
+
+The analysis writes per-model diagnostics, deterministic ensemble-size
+subsets, pairwise diversity, and per-UID variance/extreme-error CSVs beside
+the Markdown report. It evaluates probability mean, logit mean, and median
+probability before calibration. Fit Priority 6 calibration only after the
+raw representation is selected:
+
+```powershell
+python scripts/calibrate.py `
+  --oof artifacts/metrics/highres_scanner_aug_priority7_summary.csv `
+  --probability-column mean_probability `
+  --method platt `
+  --input-type probability `
+  --ensemble-method probability_mean `
+  --stage after_ensemble `
+  --cross-fit `
+  --output artifacts/calibration/highres_scanner_aug_priority7.json
+
+python scripts/package_submission.py `
+  --manifest artifacts/ensemble/highres_scanner_aug_priority7_manifest.json `
+  --calibration artifacts/calibration/highres_scanner_aug_priority7.json `
+  --output submission_highres_scanner_aug_priority7.zip
+```
+
+The manifest package preprocesses each NIfTI once and reuses the resulting
+tensor across all selected checkpoints. `scripts/benchmark_inference.py`
+reports measured preprocessing time, forward time, relative cost, and
+checkpoint bytes for 1..N selected models. No repeated GPU training or OOF
+performance values are claimed until these commands are run on the data.
+
 Before packaging a trained solution, run the source tests:
 
 ```powershell

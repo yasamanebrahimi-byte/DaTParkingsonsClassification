@@ -18,6 +18,7 @@ from ..data.transforms import build_augmentation, resolve_augmentation_config
 from ..models.resnet3d import build_model
 from ..utils.config import ModelConfig, PreprocessConfig, ROIConfig
 from ..utils.metrics import binary_metrics
+from ..utils.reproducibility import derive_seed, seed_everything
 
 
 def _device(requested: str) -> torch.device:
@@ -62,7 +63,19 @@ def train_one_fold(
     augmentation_config: dict | None = None,
     seed: int | None = None,
     repeat: int | None = None,
+    fold_seed: int | None = None,
+    training_seed: int | None = None,
+    experiment_name: str | None = None,
 ) -> Tuple[pd.DataFrame, Dict]:
+    # ``seed`` is the historical argument.  ``training_seed`` is the explicit
+    # Priority 7 name and takes precedence when both are supplied.
+    if training_seed is None:
+        training_seed = seed
+    if training_seed is not None:
+        # Seed before model construction, dataset/augmentation construction,
+        # and DataLoader creation so a requested seed controls the complete
+        # stochastic training trajectory.
+        seed_everything(derive_seed(int(training_seed), int(fold)))
     device = _device(str(training_config.get("device", "auto")))
     train_frame = frame[frame["fold"] != fold].reset_index(drop=True)
     valid_frame = frame[frame["fold"] == fold].reset_index(drop=True)
@@ -89,9 +102,9 @@ def train_one_fold(
     loader_args = {"batch_size": int(training_config.get("batch_size", 2)), "num_workers": int(training_config.get("num_workers", 0)), "pin_memory": device.type == "cuda"}
     train_generator = None
     worker_init_fn = None
-    if seed is not None:
+    if training_seed is not None:
         train_generator = torch.Generator()
-        train_generator.manual_seed(int(seed) + int(fold) * 1009)
+        train_generator.manual_seed(derive_seed(int(training_seed), int(fold)))
         worker_init_fn = _seed_worker
     train_loader = DataLoader(
         train_dataset,
@@ -160,6 +173,12 @@ def train_one_fold(
     out["probability"] = predictions["probability"]
     if repeat is not None:
         out["repeat"] = int(repeat)
+    if fold_seed is not None:
+        out["fold_seed"] = int(fold_seed)
+    if training_seed is not None:
+        out["training_seed"] = int(training_seed)
+    if experiment_name is not None:
+        out["experiment_name"] = str(experiment_name)
     if checkpoint_prefix is None:
         checkpoint_prefix = "roi_resnet3d" if data_view == "roi" else "resnet3d"
     checkpoint_path = Path(checkpoint_dir) / f"{checkpoint_prefix}_fold{fold}.pt"
@@ -170,6 +189,9 @@ def train_one_fold(
             "state_dict": best_state,
             "fold": fold,
             "repeat": int(repeat) if repeat is not None else None,
+            "fold_seed": int(fold_seed) if fold_seed is not None else None,
+            "training_seed": int(training_seed) if training_seed is not None else None,
+            "experiment_name": str(experiment_name) if experiment_name is not None else None,
             "preprocess": asdict(preprocess_config),
             "model": asdict(model_config),
             "data_view": data_view,
@@ -180,6 +202,10 @@ def train_one_fold(
     )
     return out, {
         "fold": fold,
+        "repeat": int(repeat) if repeat is not None else None,
+        "fold_seed": int(fold_seed) if fold_seed is not None else None,
+        "training_seed": int(training_seed) if training_seed is not None else None,
+        "experiment_name": str(experiment_name) if experiment_name is not None else None,
         **binary_metrics(out["target"], out["probability"]),
         "best_validation_log_loss": float(best_loss),
         "best_epoch": best_epoch,

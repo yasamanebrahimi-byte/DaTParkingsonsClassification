@@ -54,6 +54,9 @@ def main(argv=None) -> int:
     cache_dir = config.get("preprocessing", {}).get("cache_dir")
     all_predictions = []
     fold_metrics = []
+    fold_seed = int(config.get("fold_seed", config.get("seed", 20260824)))
+    training_seed = int(config.get("training_seed", config.get("seed", 20260824)))
+    experiment_name = str(config.get("experiment_name", Path(args.config).stem))
     for fold in sorted(metadata["fold"].unique()):
         predictions, metrics = train_one_fold(
             metadata,
@@ -66,7 +69,10 @@ def main(argv=None) -> int:
             data_view=data_view,
             roi_config=roi_config,
             augmentation_config=config.get("augmentation"),
-            seed=int(config.get("seed", 20260824)),
+            seed=training_seed,
+            fold_seed=fold_seed,
+            training_seed=training_seed,
+            experiment_name=experiment_name,
         )
         all_predictions.append(predictions)
         fold_metrics.append(metrics)
